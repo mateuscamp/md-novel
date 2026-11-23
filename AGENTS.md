@@ -8,6 +8,9 @@ Hoje é linha de comando; o editor ainda não existe. ADRs em `docs/adr/`.
 
 - Portão único: `make check` (fmt, clippy com `-D warnings`, todos os testes).
   Precisa do `pandoc` no PATH. Verde antes de dizer pronto.
+- CI: `.github/workflows/check.yml` roda o mesmo `make check` no Linux e no
+  Mac M1, com Rust 1.96.0 e Pandoc 3.11 fixos. Trocar uma dessas versões é
+  trocar no workflow e na máquina de desenvolvimento juntos.
 - Usar: `cargo run -- estilo estilo.yaml --css editor.css --docx reference.docx`
   e `cargo run -- exportar --estilo estilo.yaml --saida livro.docx cap1.md cap2.md`.
 
