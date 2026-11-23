@@ -145,6 +145,15 @@ o Electron é um conjunto de ferramentas só e elimina o maior risco técnico.
 Ele não foi escolhido porque o autor escolheu Rust; se o spike reprovar, ele
 entra sem nova discussão.
 
+## Identificador do app (2026-11-23)
+
+`io.github.mateuscamp.md-novel`, no lugar de `dev.mdnovel.app`. O Tauri
+avisava que um identificador terminado em `.app` conflita com a extensão de
+pacote do macOS, e `dev.mdnovel` sugeria um domínio que o autor não tem. A
+troca foi feita antes de existir instalador porque o identificador vira o
+nome das pastas de dados do app e a identidade dele no macOS: depois disso,
+trocar deixa para trás o que estiver guardado no nome antigo.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
