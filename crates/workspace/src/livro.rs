@@ -1,0 +1,229 @@
+//! O livro como pasta: quais arquivos são capítulos, e a leitura e a
+//! gravação de um capítulo sem mexer no que o autor não mexeu.
+
+use std::fs::{self, File};
+use std::io::{ErrorKind, Read};
+use std::path::{Path, PathBuf};
+use std::str;
+
+use crate::erro::ErroWorkspace;
+use crate::saida::SaidaPendente;
+
+/// Marca de ordem de bytes do UTF-8, que alguns editores do Windows gravam.
+const BOM: &[u8] = b"\xEF\xBB\xBF";
+/// Um romance inteiro em texto não chega a 2 MiB. O teto evita carregar
+/// para a memória e para a interface um arquivo que não é capítulo.
+const TAMANHO_MAXIMO_DO_CAPITULO: u64 = 16 * 1024 * 1024;
+/// Um estilo.yaml escrito à mão tem menos de 10 kB.
+const TAMANHO_MAXIMO_DO_ESTILO: u64 = 1024 * 1024;
+
+/// Uma pasta aberta como livro.
+#[derive(Debug, Clone)]
+pub struct Livro {
+    pasta: PathBuf,
+}
+
+/// Como o arquivo do capítulo estava no disco, para devolvê-lo igual.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Formato {
+    /// Começava com a marca de ordem de bytes do UTF-8.
+    bom: bool,
+    /// As linhas terminavam em CR LF (Windows) e não em LF.
+    crlf: bool,
+}
+
+/// Um capítulo lido do disco. Guarda os bytes como estavam, para saber se
+/// alguém (o Dropbox, outro editor) mudou o arquivo antes de salvar.
+#[derive(Debug, Clone)]
+pub struct Capitulo {
+    caminho: PathBuf,
+    bytes_lidos: Vec<u8>,
+    formato: Formato,
+    texto: String,
+}
+
+/// O que `Capitulo::salvar` fez.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gravacao {
+    /// O texto era o mesmo do disco: nada foi escrito.
+    SemMudanca,
+    Gravado,
+}
+
+impl Formato {
+    /// Separa o formato do texto. `None` quando os finais de linha estão
+    /// misturados: aí não há como devolver o arquivo igual depois de editar.
+    fn separar(bytes: &[u8]) -> Option<(Formato, &[u8])> {
+        let (bom, corpo) = match bytes.strip_prefix(BOM) {
+            Some(corpo) => (true, corpo),
+            None => (false, bytes),
+        };
+        let total_de_cr = corpo.iter().filter(|&&byte| byte == b'\r').count();
+        let total_de_lf = corpo.iter().filter(|&&byte| byte == b'\n').count();
+        let total_de_crlf = corpo.windows(2).filter(|par| par == b"\r\n").count();
+        let crlf = match (total_de_cr, total_de_crlf) {
+            (0, _) => false,
+            // Todo CR e todo LF fazem parte de um CR LF.
+            (cr, pares) if cr == pares && total_de_lf == pares => true,
+            _ => return None,
+        };
+        Some((Formato { bom, crlf }, corpo))
+    }
+
+    /// O texto do editor de volta aos bytes do arquivo.
+    fn codificar(self, texto: &str) -> Vec<u8> {
+        // O editor trabalha em LF; um CR que venha de texto colado sai aqui.
+        let em_lf = texto.replace("\r\n", "\n").replace('\r', "\n");
+        let corpo = if self.crlf {
+            em_lf.replace('\n', "\r\n")
+        } else {
+            em_lf
+        };
+        let mut bytes = Vec::with_capacity(BOM.len() + corpo.len());
+        if self.bom {
+            bytes.extend_from_slice(BOM);
+        }
+        bytes.extend_from_slice(corpo.as_bytes());
+        bytes
+    }
+}
+
+impl Livro {
+    /// Abre uma pasta como livro. Não cria nem altera nada nela.
+    pub fn abrir(pasta: &Path) -> Result<Livro, ErroWorkspace> {
+        if !pasta.is_dir() {
+            return Err(ErroWorkspace::NaoEPasta {
+                recebido: pasta.to_owned(),
+            });
+        }
+        Ok(Livro {
+            pasta: pasta.to_owned(),
+        })
+    }
+
+    pub fn pasta(&self) -> &Path {
+        &self.pasta
+    }
+
+    /// Onde fica o estilo do livro. O arquivo pode não existir.
+    pub fn caminho_do_estilo(&self) -> PathBuf {
+        self.pasta.join("estilo.yaml")
+    }
+
+    /// O texto do `estilo.yaml`, ou `None` se o livro ainda não tem um.
+    pub fn ler_estilo(&self) -> Result<Option<String>, ErroWorkspace> {
+        let caminho = self.caminho_do_estilo();
+        let arquivo = match File::open(&caminho) {
+            Ok(arquivo) => arquivo,
+            Err(erro) if erro.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(erro) => return Err(erro.into()),
+        };
+        let mut bytes = Vec::new();
+        arquivo
+            .take(TAMANHO_MAXIMO_DO_ESTILO + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > TAMANHO_MAXIMO_DO_ESTILO {
+            return Err(ErroWorkspace::EstiloGrandeDemais { caminho });
+        }
+        match String::from_utf8(bytes) {
+            Ok(texto) => Ok(Some(texto)),
+            Err(_) => Err(ErroWorkspace::NaoEUtf8 { caminho }),
+        }
+    }
+
+    /// Os capítulos: arquivos `.md` comuns da pasta, sem os ocultos, em
+    /// ordem de nome. É a ordem do livro enquanto não houver `livro.yaml`.
+    pub fn capitulos(&self) -> Result<Vec<String>, ErroWorkspace> {
+        let mut nomes = Vec::new();
+        for entrada in fs::read_dir(&self.pasta)? {
+            let entrada = entrada?;
+            // Nome que não é UTF-8 não tem como ir e voltar pela interface.
+            let Ok(nome) = entrada.file_name().into_string() else {
+                continue;
+            };
+            let e_md = Path::new(&nome)
+                .extension()
+                .is_some_and(|extensao| extensao.eq_ignore_ascii_case("md"));
+            // `metadata` segue link: um link para um .md comum é capítulo.
+            let e_arquivo = fs::metadata(entrada.path()).is_ok_and(|metadados| metadados.is_file());
+            if e_md && e_arquivo && !nome.starts_with('.') {
+                nomes.push(nome);
+            }
+        }
+        nomes.sort();
+        Ok(nomes)
+    }
+
+    /// Lê um capítulo pelo nome que `capitulos` devolveu.
+    pub fn ler_capitulo(&self, nome: &str) -> Result<Capitulo, ErroWorkspace> {
+        // O nome vem da interface. Só vale se estiver na lista: nada de
+        // caminho, `..` ou arquivo que não é capítulo.
+        if !self.capitulos()?.iter().any(|capitulo| capitulo == nome) {
+            return Err(ErroWorkspace::CapituloDesconhecido {
+                nome: nome.to_owned(),
+            });
+        }
+        let caminho = self.pasta.join(nome);
+        let mut bytes = Vec::new();
+        File::open(&caminho)?
+            .take(TAMANHO_MAXIMO_DO_CAPITULO + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > TAMANHO_MAXIMO_DO_CAPITULO {
+            return Err(ErroWorkspace::CapituloGrandeDemais { caminho });
+        }
+        let Some((formato, corpo)) = Formato::separar(&bytes) else {
+            return Err(ErroWorkspace::FimDeLinhaMisturado { caminho });
+        };
+        let Ok(corpo) = str::from_utf8(corpo) else {
+            return Err(ErroWorkspace::NaoEUtf8 { caminho });
+        };
+        let texto = corpo.replace("\r\n", "\n");
+        Ok(Capitulo {
+            caminho,
+            bytes_lidos: bytes,
+            formato,
+            texto,
+        })
+    }
+}
+
+impl Capitulo {
+    /// O texto para o editor: sem a marca de ordem de bytes e com as linhas
+    /// terminadas em LF.
+    pub fn texto(&self) -> &str {
+        &self.texto
+    }
+
+    /// Grava o texto do editor no formato em que o arquivo estava.
+    ///
+    /// Recusa se o arquivo mudou no disco desde a leitura, e não escreve
+    /// nada se o texto é o mesmo que foi lido.
+    pub fn salvar(&mut self, texto: &str) -> Result<Gravacao, ErroWorkspace> {
+        let mudou_por_fora = || ErroWorkspace::MudouPorFora {
+            caminho: self.caminho.clone(),
+        };
+        // Sync seguro: o que está no disco agora precisa ser o que foi lido.
+        // Um arquivo apagado ou trocado por outro programa (ou pelo Dropbox,
+        // vindo de outro computador) nunca é sobrescrito. Entre esta leitura
+        // e a troca ainda cabe uma mudança externa; a janela é de
+        // milissegundos e fica registrada no ADR 0003.
+        let no_disco = match fs::read(&self.caminho) {
+            Ok(bytes) => bytes,
+            Err(erro) if erro.kind() == ErrorKind::NotFound => return Err(mudou_por_fora()),
+            Err(erro) => return Err(erro.into()),
+        };
+        if no_disco != self.bytes_lidos {
+            return Err(mudou_por_fora());
+        }
+        let novos = self.formato.codificar(texto);
+        if novos == self.bytes_lidos {
+            return Ok(Gravacao::SemMudanca);
+        }
+        let mut saida = SaidaPendente::preparar(&self.caminho, "md")?;
+        saida.escrever(&novos)?;
+        saida.publicar()?;
+        self.texto = texto.replace("\r\n", "\n").replace('\r', "\n");
+        self.bytes_lidos = novos;
+        Ok(Gravacao::Gravado)
+    }
+}

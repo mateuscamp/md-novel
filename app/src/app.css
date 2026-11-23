@@ -1,0 +1,79 @@
+/* A moldura do app. A tipografia do texto NÃO mora aqui: ela vem do CSS que
+   o crate `estilo` gera do estilo.yaml. O que este arquivo define para a
+   linha do editor é só o padrão de quando o livro não tem estilo, e o que o
+   estilo.yaml ainda não cobre (títulos e marcadores). */
+
+:root {
+  --moldura: #f4f1ea;
+  --papel: #ffffff;
+  --tinta: #26221c;
+  --tinta-fraca: #7a7368;
+  --borda: #ddd6c8;
+  --destaque: #8a5a2b;
+  --aviso: #fff4d6;
+  --erro: #fde2df;
+  font: 14px/1.4 system-ui, sans-serif;
+  color: var(--tinta);
+}
+
+html, body { height: 100%; margin: 0; }
+body { display: flex; background: var(--moldura); }
+
+#lateral {
+  width: 240px; flex: none; display: flex; flex-direction: column;
+  border-right: 1px solid var(--borda); background: #ebe6db;
+}
+#lateral header { padding: 12px; border-bottom: 1px solid var(--borda); }
+#nome-do-livro { margin: 0 0 8px; font-size: 15px; overflow-wrap: anywhere; }
+#capitulos { list-style: none; margin: 0; padding: 6px; overflow: auto; flex: 1; }
+#capitulos button {
+  width: 100%; text-align: left; padding: 6px 8px; border: 0; border-radius: 4px;
+  background: none; color: inherit; font: inherit; cursor: pointer; overflow-wrap: anywhere;
+}
+#capitulos button:hover { background: #ded7c8; }
+#capitulos button[aria-current="true"] { background: var(--destaque); color: #fff; }
+
+button { font: inherit; }
+#abrir-pasta, #salvar, #avisos button {
+  padding: 4px 10px; border: 1px solid var(--borda); border-radius: 4px;
+  background: var(--papel); color: inherit; cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#barra {
+  display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+  border-bottom: 1px solid var(--borda); min-height: 28px;
+}
+#nome-do-capitulo { font-weight: 600; }
+#estado { margin-left: auto; color: var(--tinta-fraca); }
+#estado.erro { color: #a3261b; }
+
+#avisos:empty { display: none; }
+#avisos p { margin: 0; padding: 8px 16px; background: var(--aviso); border-bottom: 1px solid var(--borda); }
+#avisos p.erro { background: var(--erro); }
+#avisos button { margin-left: 8px; }
+
+#mesa { flex: 1; min-height: 0; display: flex; justify-content: center; }
+#vazio { align-self: center; color: var(--tinta-fraca); }
+#folha {
+  width: 17cm; max-width: 100%; height: 100%; background: var(--papel);
+  box-shadow: 0 0 12px #0002;
+}
+#folha .cm-editor { height: 100%; outline: none; }
+#folha .cm-content { padding: 2cm 1cm; caret-color: var(--tinta); }
+
+/* Padrão sem estilo.yaml. O CSS do livro usa `.cm-content .cm-line`, que é
+   mais específico e vence este. */
+.cm-line { font-family: serif; font-size: 12pt; line-height: 1.5; }
+
+/* Fora do estilo.yaml por enquanto (ADR 0002): no .docx os títulos seguem o
+   padrão do Pandoc; aqui eles só deixam de parecer parágrafo. */
+.cm-content .cm-line.md-novel-titulo {
+  text-indent: 0; text-align: left; font-weight: 600; font-style: normal;
+}
+.cm-content .cm-line.md-novel-marcador {
+  text-indent: 0; text-align: left; font: 11px/1.6 monospace; color: var(--tinta-fraca);
+  padding-top: 0; padding-bottom: 0;
+}
+.cm-content .cm-line.md-novel-vazia { text-indent: 0; }

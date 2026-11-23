@@ -9,7 +9,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use estilo::{Estilo, SeletorCss, gerar_css, gerar_reference_docx};
-use exportar::{SaidaPendente, exportar_docx, modelo_reference_docx};
+use exportar::{exportar_docx, modelo_reference_docx};
+use workspace::SaidaPendente;
 
 /// Um estilo.yaml escrito à mão tem menos de 10 kB. O teto evita ler um
 /// arquivo errado inteiro para a memória.

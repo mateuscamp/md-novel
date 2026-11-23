@@ -1,13 +1,14 @@
 //! Publicação de arquivo gerado (`SaidaPendente`): regressões da segunda
-//! auditoria de 2026-11-23.
+//! auditoria de 2026-11-23. Vieram de `crates/exportar/tests/saida.rs` junto
+//! com o módulo, sem mudar as asserções.
 
 use std::fs::{self, File};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use exportar::{ErroExportar, SaidaPendente};
+use workspace::{ErroWorkspace, SaidaPendente};
 
-fn publicar(destino: &Path, extensao: &str, conteudo: &[u8]) -> Result<(), ErroExportar> {
+fn publicar(destino: &Path, extensao: &str, conteudo: &[u8]) -> Result<(), ErroWorkspace> {
     let mut saida = SaidaPendente::preparar(destino, extensao)?;
     saida.escrever(conteudo)?;
     saida.publicar()
@@ -75,7 +76,7 @@ fn link_com_nome_css_que_aponta_para_um_capitulo_e_recusado() {
     let erro = publicar(&link, "css", b"NOVO").expect_err("alvo não é .css");
 
     assert!(
-        matches!(erro, ErroExportar::ExtensaoErrada { .. }),
+        matches!(erro, ErroWorkspace::ExtensaoErrada { .. }),
         "veio {erro}"
     );
     assert_eq!(
@@ -94,7 +95,7 @@ fn link_quebrado_e_recusado_com_o_caminho_na_mensagem() {
     let erro = publicar(&link, "css", b"NOVO").expect_err("link quebrado");
 
     assert!(
-        matches!(erro, ErroExportar::SaidaInvalida { .. }),
+        matches!(erro, ErroWorkspace::SaidaInvalida { .. }),
         "veio {erro}"
     );
     assert!(erro.to_string().contains("editor.css"), "{erro}");
@@ -111,10 +112,15 @@ fn temporario_orfao_de_uma_execucao_interrompida_e_recolhido() {
     // 2026-11-23): prefixo sem o hífen final, prefixo certo com outra
     // extensão, e pasta com o nome inteiro de um temporário.
     let prefixo_quase = pasta.path().join(".md-novel-gravandoX.docx");
-    let outra_extensao = pasta.path().join(".md-novel-gravando-notas.md");
+    // Era `-notas.md` até 2026-11-23; `.md` passou a ser extensão de
+    // temporário (capítulo salvo pelo app), então a trava da extensão é
+    // conferida com `.txt`, e o órfão `.md` entra no que deve sumir.
+    let outra_extensao = pasta.path().join(".md-novel-gravando-notas.txt");
+    let orfao_de_capitulo = pasta.path().join(".md-novel-gravando-Qw3rTy.md");
     let pasta_parecida = pasta.path().join(".md-novel-gravando-pasta.docx");
     for arquivo in [
         &orfao,
+        &orfao_de_capitulo,
         &recente,
         &do_autor,
         &parecido,
@@ -126,6 +132,7 @@ fn temporario_orfao_de_uma_execucao_interrompida_e_recolhido() {
     fs::create_dir(&pasta_parecida).expect("criar pasta");
     for antigo in [
         &orfao,
+        &orfao_de_capitulo,
         &do_autor,
         &parecido,
         &prefixo_quase,
@@ -141,7 +148,7 @@ fn temporario_orfao_de_uma_execucao_interrompida_e_recolhido() {
         nomes(pasta.path()),
         [
             ".md-novel-gravando",
-            ".md-novel-gravando-notas.md",
+            ".md-novel-gravando-notas.txt",
             ".md-novel-gravando-pasta.docx",
             ".md-novel-gravando-zz99ZZ.docx",
             ".md-novel-gravandoX.docx",

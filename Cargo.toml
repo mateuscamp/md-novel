@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/estilo", "crates/exportar", "crates/cli"]
+members = ["crates/estilo", "crates/workspace", "crates/exportar", "crates/cli", "app/src-tauri"]
 
 [workspace.package]
 edition = "2024"
@@ -10,6 +10,7 @@ publish = false
 [workspace.dependencies]
 estilo = { path = "crates/estilo" }
 exportar = { path = "crates/exportar" }
+workspace = { path = "crates/workspace" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml_ng = "0.10"
 quick-xml = "0.42"

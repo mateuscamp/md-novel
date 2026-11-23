@@ -6,6 +6,7 @@ use std::io::{Cursor, Read};
 use std::path::Path;
 
 use exportar::{ErroExportar, exportar_docx, modelo_reference_docx};
+use workspace::ErroWorkspace;
 use zip::ZipArchive;
 
 /// PNG válido de 1x1 pixel, para o Pandoc ter o que embutir.
@@ -112,7 +113,10 @@ fn pasta_de_saida_que_nao_existe_e_erro_claro() {
     let erro = exportar_docx(&[capitulo], b"", &saida).expect_err("pasta inexistente");
 
     assert!(
-        matches!(erro, ErroExportar::PastaInexistente { .. }),
+        matches!(
+            erro,
+            ErroExportar::Saida(ErroWorkspace::PastaInexistente { .. })
+        ),
         "veio {erro}"
     );
     let mensagem = erro.to_string();

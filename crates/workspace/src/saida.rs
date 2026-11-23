@@ -10,10 +10,11 @@ use std::time::Duration;
 
 use tempfile::NamedTempFile;
 
-use crate::ErroExportar;
+use crate::ErroWorkspace;
 
 const PREFIXO_DO_TEMPORARIO: &str = ".md-novel-gravando-";
-const EXTENSOES_GERADAS: [&str; 2] = [".css", ".docx"];
+// `.md` entrou com o app: salvar um capítulo também passa por um temporário.
+const EXTENSOES_GERADAS: [&str; 3] = [".css", ".docx", ".md"];
 const IDADE_DE_ORFAO: Duration = Duration::from_secs(60 * 60);
 
 /// Uma saída já escrita (ou a escrever) num temporário, ainda não publicada.
@@ -21,10 +22,10 @@ const IDADE_DE_ORFAO: Duration = Duration::from_secs(60 * 60);
 ///
 /// ```no_run
 /// use std::path::Path;
-/// let mut css = exportar::SaidaPendente::preparar(Path::new("editor.css"), "css")?;
+/// let mut css = workspace::SaidaPendente::preparar(Path::new("editor.css"), "css")?;
 /// css.escrever(b"p { margin: 0 }")?;
 /// css.publicar()?;
-/// # Ok::<(), exportar::ErroExportar>(())
+/// # Ok::<(), workspace::ErroWorkspace>(())
 /// ```
 #[derive(Debug)]
 pub struct SaidaPendente {
@@ -37,11 +38,11 @@ impl SaidaPendente {
     ///
     /// A extensão é exigida porque o manuscrito é o ativo: um argumento
     /// trocado não pode gravar por cima de um capítulo ou do estilo.yaml.
-    pub fn preparar(destino: &Path, extensao: &str) -> Result<Self, ErroExportar> {
-        let invalida = || ErroExportar::SaidaInvalida {
+    pub fn preparar(destino: &Path, extensao: &str) -> Result<Self, ErroWorkspace> {
+        let invalida = || ErroWorkspace::SaidaInvalida {
             recebido: destino.to_owned(),
         };
-        let extensao_errada = |caminho: &Path| ErroExportar::ExtensaoErrada {
+        let extensao_errada = |caminho: &Path| ErroWorkspace::ExtensaoErrada {
             recebido: caminho.to_owned(),
             esperada: extensao.to_owned(),
         };
@@ -64,7 +65,7 @@ impl SaidaPendente {
             Some(_) | None => Path::new("."),
         };
         if !pasta.is_dir() {
-            return Err(ErroExportar::PastaInexistente {
+            return Err(ErroWorkspace::PastaInexistente {
                 recebido: pasta.to_owned(),
             });
         }
@@ -88,14 +89,14 @@ impl SaidaPendente {
         self.temporario.path()
     }
 
-    pub fn escrever(&mut self, conteudo: &[u8]) -> Result<(), ErroExportar> {
+    pub fn escrever(&mut self, conteudo: &[u8]) -> Result<(), ErroWorkspace> {
         self.temporario.write_all(conteudo)?;
         Ok(())
     }
 
     /// Troca o destino pelo temporário. Um destino que já existia mantém a
     /// permissão que tinha; um novo fica com a do temporário (0600).
-    pub fn publicar(self) -> Result<(), ErroExportar> {
+    pub fn publicar(self) -> Result<(), ErroWorkspace> {
         // Pelo caminho, não pelo descritor: o Pandoc pode ter trocado o
         // arquivo temporário por outro com o mesmo nome.
         if let Ok(antigo) = fs::metadata(&self.destino) {
