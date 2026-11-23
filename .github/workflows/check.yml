@@ -1,0 +1,77 @@
+# Portão do projeto no CI: o mesmo `make check` do AGENTS.md, no Linux e no
+# Mac M1 (as duas máquinas do autor). Versões fixas de tudo o que pode mudar
+# o resultado: actions por SHA, Rust 1.96.0 e Pandoc 3.11, com checksum.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Ao trocar a versão, troque também os nomes de arquivo e os sha256 da
+  # matriz: a conferência do checksum reprova se um ficar para trás.
+  PANDOC_VERSAO: "3.11"
+
+jobs:
+  check:
+    name: make check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # Uma plataforma quebrada não esconde o resultado da outra.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            pandoc_arquivo: pandoc-3.11-1-amd64.deb
+            pandoc_sha256: 89d4c9d97818c62a97157f0072844e4602c6cee795bf84abd1aee7273abcda99
+          - os: macos-14
+            pandoc_arquivo: pandoc-3.11-arm64-macOS.pkg
+            pandoc_sha256: eaf6e2fbe212e2c380c44802434f01aa74e8f311744ba94b0ae281383eea3cb4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master em 2026-11-15
+        with:
+          # A mesma do desenvolvimento: clippy e rustfmt novos mudam o portão.
+          toolchain: 1.96.0
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Instalar o Pandoc ${{ env.PANDOC_VERSAO }}
+        shell: bash
+        env:
+          ARQUIVO: ${{ matrix.pandoc_arquivo }}
+          SHA256: ${{ matrix.pandoc_sha256 }}
+        run: |
+          set -euo pipefail
+          destino="$RUNNER_TEMP/$ARQUIVO"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$destino" \
+            "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSAO/$ARQUIVO"
+          echo "$SHA256  $destino" | shasum -a 256 --check
+          case "$ARQUIVO" in
+            *.deb) sudo dpkg -i "$destino" ;;
+            *.pkg) sudo installer -pkg "$destino" -target / ;;
+            *) echo "instalador desconhecido: $ARQUIVO" >&2; exit 1 ;;
+          esac
+          # Outro pandoc antes no PATH (Homebrew, por exemplo) daria um
+          # resultado que não é o desta versão.
+          instalado="$(pandoc --version | sed -n 1p)"
+          echo "$instalado"
+          test "$instalado" = "pandoc $PANDOC_VERSAO"
+
+      - name: make check
+        run: make check
