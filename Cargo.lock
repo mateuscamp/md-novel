@@ -1841,12 +1841,14 @@ name = "md-novel-app"
 version = "0.1.0"
 dependencies = [
  "estilo",
+ "exportar",
  "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tempfile",
  "workspace",
+ "zip",
 ]
 
 [[package]]

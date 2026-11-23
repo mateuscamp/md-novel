@@ -16,9 +16,14 @@ comando. ADRs em `docs/adr/`.
 - App: `cd app && cargo tauri build --debug --no-bundle`, depois
   `target/debug/md-novel-app <pasta do livro>`. `cargo run -p md-novel-app`
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
-- Teste funcional do app (precisa de sessão gráfica, fora do CI):
-  `python3 -I app/teste_funcional.py target/debug/md-novel-app`. Rode antes
-  de dizer que uma mudança na interface funciona.
+- Teste funcional do app (fora do CI):
+  `python3 -I app/teste_funcional.py target/debug/md-novel-app`. São três
+  passadas: salvar sozinho, fechar a janela e exportar. Ele abre o app num
+  display virtual invisível (`xvfb-run`). Rode antes de dizer que uma mudança
+  na interface funciona.
+- Nunca abra janela na tela do autor sem ele pedir: nada de `--na-tela`, de
+  rodar o binário do app direto nem de `cargo tauri dev` por conta própria
+  (2026-11-23: as janelas do teste atrapalharam o trabalho dele).
 - Linha de comando: `cargo run -p md-novel -- estilo estilo.yaml --css editor.css --docx reference.docx`
   e `cargo run -p md-novel -- exportar --estilo estilo.yaml --saida livro.docx cap1.md cap2.md`.
 
@@ -30,7 +35,7 @@ comando. ADRs em `docs/adr/`.
 | `crates/workspace` | a pasta do livro: listar e ler capítulos, e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve arquivo. |
 | `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. Grava pelo `workspace`. |
 | `crates/cli` | adaptador fino | Lê argumentos, chama os crates. Sem regra de estilo. |
-| `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`, sem tauri, testada sem janela). A página nunca manda caminho: a pasta vem do seletor do sistema ou da linha de comando, e capítulo só pelo nome da lista. |
+| `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho: a pasta vem do seletor do sistema ou da linha de comando, e capítulo só pelo nome da lista. |
 | `app/src` | a interface (TypeScript, CodeMirror 6) | Recebe o CSS pronto do Rust e não define tipografia do texto. O que o `estilo.yaml` ainda não cobre (títulos, marcadores `:::`) fica em `app.css`, com comentário dizendo isso. Regra testável vai em função pura com teste (`*.test.ts`). |
 
 ## Regras

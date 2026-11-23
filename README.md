@@ -7,8 +7,8 @@ editor e o `reference.docx` do Pandoc, de modo que a tela e o .docx recebem as
 mesmas propriedades.
 
 **Estado:** há um programa de desktop na primeira versão (abre a pasta do
-livro, edita com a tipografia do `estilo.yaml` e salva) e uma linha de comando,
-que gera o CSS, o reference.docx e exporta o .docx.
+livro, edita com a tipografia do `estilo.yaml`, salva e exporta o .docx) e
+uma linha de comando, que gera o CSS, o reference.docx e também exporta.
 
 ![A janela do md-novel com um capítulo aberto](docs/imagens/app-linux.png)
 
@@ -72,11 +72,15 @@ O que ele faz hoje:
 - Se o arquivo mudou no disco depois que você abriu (outro computador pelo
   Dropbox, outro editor), ele não grava por cima: avisa e oferece recarregar.
 - Avisa quando a fonte do estilo não está instalada.
+- "Exportar .docx…" salva o que está na tela, pergunta onde gravar e gera o
+  livro inteiro, com os capítulos em ordem e o estilo do `estilo.yaml`. Os
+  avisos do Pandoc (uma imagem que não foi achada, por exemplo) aparecem na
+  janela. Sem `estilo.yaml` o .docx sai com o estilo padrão do Pandoc, com
+  aviso; com o `estilo.yaml` inválido nada é exportado.
 
-O que ainda não faz: exportar pelo programa (use a linha de comando abaixo),
-ordenar capítulos fora da ordem de nome, esconder a linha em branco entre
-parágrafos, dar aos títulos a cara do .docx e perceber sozinho, com o
-programa aberto, que um arquivo mudou. Não há instalador.
+O que ainda não faz: ordenar capítulos fora da ordem de nome, esconder a
+linha em branco entre parágrafos, dar aos títulos a cara do .docx e perceber
+sozinho, com o programa aberto, que um arquivo mudou. Não há instalador.
 
 ## Uso da linha de comando
 

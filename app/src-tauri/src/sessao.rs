@@ -8,6 +8,8 @@ use estilo::{Estilo, SeletorCss, gerar_css};
 use serde::Serialize;
 use workspace::{Capitulo, ErroWorkspace, Gravacao, Livro};
 
+use crate::exportacao::PlanoDeExportacao;
+
 /// O seletor da linha de texto do CodeMirror: o CSS do livro vale direto
 /// nela, sem tradução (ADR 0002 e 0003).
 const SELETOR_DA_LINHA: &str = ".cm-content .cm-line";
@@ -69,6 +71,24 @@ impl Sessao {
         Ok(texto)
     }
 
+    /// O que exportar agora: os capítulos em ordem e o estilo, relidos da pasta.
+    pub fn plano_de_exportacao(&self) -> Result<PlanoDeExportacao, ErroDeComando> {
+        let Some(livro) = &self.livro else {
+            return Err(erro("abra a pasta do livro antes de exportar"));
+        };
+        let pasta = livro.pasta().to_owned();
+        Ok(PlanoDeExportacao {
+            nome: nome_da(&pasta),
+            capitulos: livro
+                .capitulos()?
+                .iter()
+                .map(|capitulo| pasta.join(capitulo))
+                .collect(),
+            estilo: livro.ler_estilo()?,
+            pasta,
+        })
+    }
+
     pub fn salvar_capitulo(&mut self, nome: &str, texto: &str) -> Result<Gravacao, ErroDeComando> {
         // Só se salva o que foi lido nesta sessão: é a leitura que guarda os
         // bytes para saber se o arquivo mudou por fora.
@@ -111,15 +131,20 @@ fn montar(livro: &Livro) -> Result<LivroAberto, ErroDeComando> {
     let pasta = livro.pasta();
     Ok(LivroAberto {
         pasta: pasta.display().to_string(),
-        nome: pasta.file_name().map_or_else(
-            || pasta.display().to_string(),
-            |nome| nome.to_string_lossy().into_owned(),
-        ),
+        nome: nome_da(pasta),
         capitulos,
         css,
         fontes,
         avisos,
     })
+}
+
+/// O nome do livro é o nome da pasta dele.
+fn nome_da(pasta: &Path) -> String {
+    pasta.file_name().map_or_else(
+        || pasta.display().to_string(),
+        |nome| nome.to_string_lossy().into_owned(),
+    )
 }
 
 fn estilo_do_livro(livro: &Livro) -> Result<Option<Estilo>, String> {
