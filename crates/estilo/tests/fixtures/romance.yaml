@@ -1,0 +1,28 @@
+versao: 1
+corpo:
+  fonte: EB Garamond
+  tamanho: 12pt
+  entrelinha: 1.5
+  alinhamento: justificado
+  recuo-primeira-linha: 1.25cm
+  espaco-antes: 0pt
+  espaco-depois: 0pt
+estilos:
+  Epígrafe:
+    alinhamento: direita
+    italico: true
+    recuo-primeira-linha: 0cm
+    espaco-depois: 24pt
+  Carta:
+    fonte: Courier Prime
+    tamanho: 11pt
+    entrelinha: 1
+    alinhamento: esquerda
+    recuo-primeira-linha: 0cm
+    espaco-depois: 6pt
+  Placa de rua:
+    alinhamento: centro
+    negrito: true
+    recuo-primeira-linha: 0cm
+    espaco-antes: 12pt
+    espaco-depois: 12pt

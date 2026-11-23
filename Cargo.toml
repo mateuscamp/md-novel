@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/estilo", "crates/exportar", "crates/cli"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[workspace.dependencies]
+estilo = { path = "crates/estilo" }
+exportar = { path = "crates/exportar" }
+serde = { version = "1", features = ["derive"] }
+serde_yaml_ng = "0.10"
+quick-xml = "0.42"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Cada propriedade de estilo precisa de tradução explícita para CSS e DOCX.
+# Um braço `_ =>` deixaria uma propriedade nova sumir em silêncio (ADR 0002).
+wildcard_enum_match_arm = "deny"
+unwrap_used = "deny"

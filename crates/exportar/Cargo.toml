@@ -1,0 +1,18 @@
+[package]
+name = "exportar"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Único lugar que chama o Pandoc."
+
+[dependencies]
+thiserror.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+estilo.workspace = true
+zip.workspace = true
+
+[lints]
+workspace = true

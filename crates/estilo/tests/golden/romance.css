@@ -1,0 +1,49 @@
+/* Gerado pelo md-novel a partir do estilo.yaml. Não edite aqui: mude o estilo.yaml. */
+
+.md-novel-corpo {
+  font-family: "EB Garamond";
+  font-size: 12pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
+  text-align: justify;
+  text-indent: 1.25cm;
+  padding-top: 0pt;
+  padding-bottom: 0pt;
+  font-style: normal;
+  font-weight: normal;
+}
+
+:is(.md-novel-corpo)[data-md-novel-estilo="Carta"] {
+  font-family: "Courier Prime";
+  font-size: 11pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1);
+  text-align: left;
+  text-indent: 0cm;
+  padding-top: 0pt;
+  padding-bottom: 6pt;
+  font-style: normal;
+  font-weight: normal;
+}
+
+:is(.md-novel-corpo)[data-md-novel-estilo="Epígrafe"] {
+  font-family: "EB Garamond";
+  font-size: 12pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
+  text-align: right;
+  text-indent: 0cm;
+  padding-top: 0pt;
+  padding-bottom: 24pt;
+  font-style: italic;
+  font-weight: normal;
+}
+
+:is(.md-novel-corpo)[data-md-novel-estilo="Placa de rua"] {
+  font-family: "EB Garamond";
+  font-size: 12pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
+  text-align: center;
+  text-indent: 0cm;
+  padding-top: 12pt;
+  padding-bottom: 12pt;
+  font-style: normal;
+  font-weight: bold;
+}
