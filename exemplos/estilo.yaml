@@ -1,0 +1,55 @@
+# Estilo de um livro para o md-novel. Copie para a pasta do livro e ajuste.
+# Tudo o que está aqui sai igual no CSS do editor e no .docx. Chave que não
+# existe é recusada com erro, nunca ignorada.
+
+# Versão do formato deste arquivo. Por enquanto só existe a 1.
+versao: 1
+
+# O corpo vale para todo parágrafo comum. Aqui toda chave é obrigatória,
+# menos italico e negrito, que começam desligados.
+corpo:
+  # Nome da fonte como aparece no sistema. Se ela não estiver instalada, o
+  # editor e o Word usam outra, cada um a sua.
+  fonte: EB Garamond
+  # Tamanho em pontos, em múltiplos de 0.5pt (é o que o Word guarda).
+  tamanho: 12pt
+  # Múltiplo da linha simples, como na caixa "Parágrafo" do Word:
+  # 1 é simples, 1.5 é "1,5 linhas", 2 é duplo. Use ponto, não vírgula.
+  entrelinha: 1.5
+  # esquerda, centro, direita ou justificado.
+  alinhamento: justificado
+  # Medidas aceitam pt, cm, mm ou in, com ponto decimal: 1.25cm, 6pt, 10mm.
+  recuo-primeira-linha: 1.25cm
+  espaco-antes: 0pt
+  espaco-depois: 0pt
+  italico: false
+  negrito: false
+
+# Estilos nomeados, usados no capítulo assim:
+#
+#   ::: {custom-style="Epígrafe"}
+#   O texto da epígrafe.
+#   :::
+#
+# Cada um parte do corpo e troca só o que declarar. O nome aceita letras
+# (com acento), números, espaço e hífen.
+estilos:
+  Epígrafe:
+    alinhamento: direita
+    italico: true
+    recuo-primeira-linha: 0cm
+    espaco-depois: 24pt
+
+  Carta:
+    tamanho: 11pt
+    entrelinha: 1
+    alinhamento: esquerda
+    recuo-primeira-linha: 0cm
+    espaco-antes: 6pt
+    espaco-depois: 6pt
+
+  Separador:
+    alinhamento: centro
+    recuo-primeira-linha: 0cm
+    espaco-antes: 12pt
+    espaco-depois: 12pt
