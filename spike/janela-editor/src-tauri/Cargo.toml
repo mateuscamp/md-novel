@@ -1,0 +1,14 @@
+[package]
+name = "md-novel-spike-janela"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Workspace próprio: o spike fica fora do `make check` e do workspace do projeto.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

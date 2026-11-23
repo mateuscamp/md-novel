@@ -1,0 +1,49 @@
+/* Gerado pelo md-novel a partir do estilo.yaml. Não edite aqui: mude o estilo.yaml. */
+
+.cm-content .cm-line {
+  font-family: "EB Garamond";
+  font-size: 12pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
+  text-align: justify;
+  text-indent: 1.25cm;
+  padding-top: 0pt;
+  padding-bottom: 0pt;
+  font-style: normal;
+  font-weight: normal;
+}
+
+:is(.cm-content .cm-line)[data-md-novel-estilo="Carta"] {
+  font-family: "EB Garamond";
+  font-size: 11pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1);
+  text-align: left;
+  text-indent: 0cm;
+  padding-top: 6pt;
+  padding-bottom: 6pt;
+  font-style: normal;
+  font-weight: normal;
+}
+
+:is(.cm-content .cm-line)[data-md-novel-estilo="Epígrafe"] {
+  font-family: "EB Garamond";
+  font-size: 12pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
+  text-align: right;
+  text-indent: 0cm;
+  padding-top: 0pt;
+  padding-bottom: 24pt;
+  font-style: italic;
+  font-weight: normal;
+}
+
+:is(.cm-content .cm-line)[data-md-novel-estilo="Separador"] {
+  font-family: "EB Garamond";
+  font-size: 12pt;
+  line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
+  text-align: center;
+  text-indent: 0cm;
+  padding-top: 12pt;
+  padding-bottom: 12pt;
+  font-style: normal;
+  font-weight: normal;
+}

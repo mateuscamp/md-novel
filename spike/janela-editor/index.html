@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>md-novel — spike da janela</title>
+    <!-- Gerado pelo md-novel a partir de exemplos/estilo.yaml, seletor .cm-content .cm-line -->
+    <link rel="stylesheet" href="/estilo.css" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #f4f1ea; }
+      #folha { width: 15cm; margin: 0 auto; height: 100%; background: #fff; }
+      #folha .cm-editor { height: 100%; }
+      #folha .cm-content { padding: 2cm 0; }
+      #medidas {
+        position: fixed; right: 8px; bottom: 8px; max-width: 46ch;
+        font: 12px/1.4 monospace; white-space: pre-wrap;
+        background: #222d; color: #eee; padding: 8px; border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="folha"></div>
+    <pre id="medidas">medindo...</pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
