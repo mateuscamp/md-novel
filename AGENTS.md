@@ -17,10 +17,13 @@ comando. ADRs em `docs/adr/`.
   `target/debug/md-novel-app <pasta do livro>`. `cargo run -p md-novel-app`
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
-  `python3 -I app/teste_funcional.py target/debug/md-novel-app`. São três
-  passadas: salvar sozinho, fechar a janela e exportar. Ele abre o app num
-  display virtual invisível (`xvfb-run`). Rode antes de dizer que uma mudança
-  na interface funciona.
+  `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
+  São seis passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  fechar a janela, exportar, tema escuro, modo foco e a escolha de tema
+  guardada. Ele abre o app num
+  display virtual invisível (`xvfb-run`), com a pasta de dados do app num
+  temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
+  olha o visual. Rode antes de dizer que uma mudança na interface funciona.
 - Nunca abra janela na tela do autor sem ele pedir: nada de `--na-tela`, de
   rodar o binário do app direto nem de `cargo tauri dev` por conta própria
   (2026-11-23: as janelas do teste atrapalharam o trabalho dele).
@@ -32,11 +35,11 @@ comando. ADRs em `docs/adr/`.
 | Onde | Papel | Regra |
 |---|---|---|
 | `crates/estilo` | núcleo: estilo.yaml → CSS + styles.xml | Rust puro. Sem processo, sem rede, sem outro crate do projeto. Dependência nova exige mudar o ADR 0002. |
-| `crates/workspace` | a pasta do livro: listar e ler capítulos, e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve arquivo. |
+| `crates/workspace` | a pasta do livro: listar e ler capítulos, contar palavras e achar o título, e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve arquivo. |
 | `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. Grava pelo `workspace`. |
 | `crates/cli` | adaptador fino | Lê argumentos, chama os crates. Sem regra de estilo. |
 | `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho: a pasta vem do seletor do sistema ou da linha de comando, e capítulo só pelo nome da lista. |
-| `app/src` | a interface (TypeScript, CodeMirror 6) | Recebe o CSS pronto do Rust e não define tipografia do texto. O que o `estilo.yaml` ainda não cobre (títulos, marcadores `:::`) fica em `app.css`, com comentário dizendo isso. Regra testável vai em função pura com teste (`*.test.ts`). |
+| `app/src` | a interface (TypeScript, CodeMirror 6) | Recebe o CSS pronto do Rust e não define tipografia do texto. O que o `estilo.yaml` ainda não cobre (títulos, marcadores `:::`) fica em `app.css`, com comentário dizendo isso. Regra testável vai em função pura com teste (`*.test.ts`). O tema e a moldura (`app.css`) não mudam a tipografia do texto. Dependência nova entra na lista de `fronteira.test.ts`, com o motivo no ADR 0003. |
 
 ## Regras
 
@@ -68,6 +71,16 @@ comando. ADRs em `docs/adr/`.
   salvar. Cache e configuração do app, quando existirem, vão fora dela.
 - Limite ou guarda nova (tamanho, faixa, extensão) vem com o teste que
   reprova quando ela é removida.
+- Contagem de palavras e título do capítulo existem duas vezes, em
+  `crates/workspace/src/texto.rs` e em `app/src/texto.ts`. Mudou a regra:
+  primeiro o caso novo em `crates/workspace/tests/fixtures/`, depois os dois
+  lados, no mesmo commit.
+- O que é título quem decide é o Pandoc, não o CommonMark. Antes de escrever
+  um caso em `titulos.txt`, confira com `pandoc -f markdown -t native`;
+  `crates/exportar/tests/titulos_pandoc.rs` reprova o caso que o Pandoc não
+  confirma.
+- O editor mostra o Markdown, não esconde: sinal digitado (`*`, `#`, `:::`)
+  continua na tela. O modo foco nunca esconde os avisos.
 - Caminho de imagem num capítulo vale a partir da pasta daquele capítulo
   (`+rebase_relative_paths`), não da pasta de onde o comando roda.
 - O único arquivo que o md-novel apaga sozinho é temporário dele mesmo:
@@ -77,6 +90,8 @@ comando. ADRs em `docs/adr/`.
   script continua só do próprio app. Capacidade nova no
   `capabilities/default.json` ou plugin novo do Tauri exige ADR.
 - Pandoc só converte de .md para .docx. Importar .docx exige um ADR que
-  substitua o 0001.
+  substitua o 0001. Num teste, o Pandoc também pode ler Markdown para
+  conferir uma regra nossa contra a dele (`titulos_pandoc.rs`); .docx ele
+  continua sem ler.
 - Mensagem de erro em português, com o valor recebido e o formato esperado.
 - Não apague comentário que explica o porquê.

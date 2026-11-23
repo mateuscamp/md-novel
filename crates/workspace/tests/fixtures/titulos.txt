@@ -1,0 +1,29 @@
+# Casos do título do capítulo (o primeiro título Markdown do texto), lidos
+# pelos testes do Rust e da interface. Formato: título|texto, com \n no lugar
+# da quebra de linha; um título vazio quer dizer "sem título".
+# A regra é a do Pandoc, não a do CommonMark: `crates/exportar/tests/titulos_pandoc.rs`
+# passa cada texto daqui pelo Pandoc de verdade e exige o mesmo título.
+Capítulo um|# Capítulo um\n\ntexto
+Segundo nível|texto\n\n## Segundo nível\n\n# Depois
+|sem título nenhum
+|#semespaco
+Com espaços|#   Com espaços   
+Título com ênfase|# Título com *ênfase* #
+É título|```\n# não é título\n```\n# É título
+Dentro do bloco|::: {custom-style="X"}\n# Dentro do bloco\n:::
+|# #
+Só um|## Só um ##   
+# O Pandoc aceita mais de seis cerquilhas e tira as do fim mesmo coladas.
+Sete cerquilhas|####### Sete cerquilhas
+Um|# Um#
+# Título recuado não é título para o Pandoc.
+|   # Recuado
+# Título colado num parágrafo (sem linha em branco antes) é texto do parágrafo.
+|texto\n# Colado no parágrafo
+Depois|texto\n# Colado\n\n# Depois
+|> citação\n# Colado na citação
+# Título logo depois de outro título, de um bloco ou de uma cerca vale.
+Segundo|#\n## Segundo
+Depois do bloco|::: {.a}\ntexto\n:::\n# Depois do bloco
+# Um `:::` solto, sem bloco aberto, é texto: o título colado nele não vale.
+|:::\n# Depois de fechar solto

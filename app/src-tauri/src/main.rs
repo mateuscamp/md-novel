@@ -32,7 +32,9 @@ impl Estado {
 }
 
 /// O livro aberto ao iniciar (pasta passada na linha de comando), se houver.
-#[tauri::command]
+/// `async` porque montar a lista lê todos os capítulos: fora da thread
+/// principal, a janela não trava enquanto isso.
+#[tauri::command(async)]
 fn livro_atual(estado: State<'_, Estado>) -> Result<Option<LivroAberto>, ErroDeComando> {
     estado.sessao().livro_atual()
 }
@@ -128,6 +130,12 @@ struct RoteiroDeTeste {
     fechar: bool,
     /// Exportar o livro logo depois de digitar.
     exportar: bool,
+    /// Tema para esta janela (`claro` ou `escuro`), sem guardar a escolha.
+    tema: Option<String>,
+    /// Quantas vezes clicar no botão de tema, como o autor faria.
+    cliques_no_tema: u32,
+    /// Entrar no modo foco depois de digitar.
+    foco: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -140,6 +148,12 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         digitar: std::env::var("MD_NOVEL_TESTE_DIGITAR").ok()?,
         fechar: std::env::var_os("MD_NOVEL_TESTE_FECHAR").is_some(),
         exportar: std::env::var_os("MD_NOVEL_TESTE_EXPORTAR").is_some(),
+        tema: std::env::var("MD_NOVEL_TESTE_TEMA").ok(),
+        cliques_no_tema: std::env::var("MD_NOVEL_TESTE_CLIQUES_NO_TEMA")
+            .ok()
+            .and_then(|cliques| cliques.parse().ok())
+            .unwrap_or(0),
+        foco: std::env::var_os("MD_NOVEL_TESTE_FOCO").is_some(),
     })
 }
 

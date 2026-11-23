@@ -2,10 +2,12 @@
 // como o .docx: o estilo nomeado em que ela está, se é título e se é um
 // marcador `:::`. Função pura, sem navegador, para ser testada sozinha.
 
+import { tituloDaLinha } from "./texto.ts";
+
 export interface MarcaDeLinha {
   /** Nome do estilo de `::: {custom-style="Nome"}` que envolve a linha. */
   estilo: string | null;
-  /** Linha de título (`# ...`), que o Pandoc não formata como corpo. */
+  /** Linha de título (`# ...`) para o Pandoc, que não a formata como corpo. */
   titulo: boolean;
   /** A própria linha `:::` que abre ou fecha um bloco. */
   marcador: boolean;
@@ -14,7 +16,6 @@ export interface MarcaDeLinha {
 const FECHAMENTO = /^:{3,}\s*$/;
 const ABERTURA = /^:{3,}\s*(\S.*)$/;
 const ESTILO = /custom-style=(?:"([^"]+)"|'([^']+)')/;
-const TITULO = /^#{1,6}\s+\S/;
 
 const CERCA_DE_CODIGO = /^ {0,3}(`{3,}|~{3,})/;
 
@@ -25,12 +26,17 @@ const CERCA_DE_CODIGO = /^ {0,3}(`{3,}|~{3,})/;
  *
  * Dentro de um bloco de código cercado (crases ou til) nada é interpretado,
  * como no Pandoc: o `:::` ali é texto.
+ *
+ * Título é o que o Pandoc lê como título (a mesma regra de `tituloDoTexto`):
+ * colado num parágrafo, sem linha em branco antes, o `# ...` é texto dele.
  */
 export function marcarLinhas(linhas: readonly string[]): MarcaDeLinha[] {
   const pilha: (string | null)[] = [];
   const nada: MarcaDeLinha = { estilo: null, titulo: false, marcador: false };
   /** A cerca que abriu o bloco de código em que estamos. */
   let cerca: string | null = null;
+  /** A linha de cima é texto de parágrafo. */
+  let emParagrafo = false;
   return linhas.map((linha) => {
     const marcaDeCerca = CERCA_DE_CODIGO.exec(linha)?.[1];
     if (cerca !== null) {
@@ -45,21 +51,29 @@ export function marcarLinhas(linhas: readonly string[]): MarcaDeLinha[] {
     }
     if (marcaDeCerca !== undefined) {
       cerca = marcaDeCerca;
+      emParagrafo = false;
       return { ...nada };
     }
     if (FECHAMENTO.test(linha)) {
       // Fechamento sem bloco aberto é texto comum.
-      if (pilha.length === 0) return { ...nada };
+      if (pilha.length === 0) {
+        emParagrafo = true;
+        return { ...nada };
+      }
       pilha.pop();
+      emParagrafo = false;
       return { estilo: null, titulo: false, marcador: true };
     }
     const abertura = ABERTURA.exec(linha);
     if (abertura) {
       const estilo = ESTILO.exec(abertura[1] ?? "");
       pilha.push(estilo?.[1] ?? estilo?.[2] ?? null);
+      emParagrafo = false;
       return { estilo: null, titulo: false, marcador: true };
     }
     const estilo = pilha.findLast((nome) => nome !== null) ?? null;
-    return { estilo, titulo: TITULO.test(linha), marcador: false };
+    const titulo = tituloDaLinha(linha) !== null && !emParagrafo;
+    if (!titulo) emParagrafo = linha.trim() !== "";
+    return { estilo, titulo, marcador: false };
   });
 }

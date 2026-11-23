@@ -14,12 +14,20 @@ use crate::exportacao::PlanoDeExportacao;
 /// nela, sem tradução (ADR 0002 e 0003).
 const SELETOR_DA_LINHA: &str = ".cm-content .cm-line";
 
+/// Um capítulo na lateral do app.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CapituloNaLista {
+    pub nome: String,
+    pub titulo: Option<String>,
+    pub palavras: Option<usize>,
+}
+
 /// O livro como a interface precisa: nomes, CSS pronto e avisos para o autor.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LivroAberto {
     pub pasta: String,
     pub nome: String,
-    pub capitulos: Vec<String>,
+    pub capitulos: Vec<CapituloNaLista>,
     /// CSS do `estilo.yaml`. `None` quando o livro não tem estilo válido.
     pub css: Option<String>,
     /// Fontes que o estilo pede, para a interface avisar se alguma falta.
@@ -104,7 +112,23 @@ impl Sessao {
 /// Junta o que a interface precisa. Estilo ausente ou inválido vira aviso:
 /// o autor continua podendo abrir e editar os capítulos.
 fn montar(livro: &Livro) -> Result<LivroAberto, ErroDeComando> {
-    let capitulos = livro.capitulos()?;
+    let capitulos: Vec<CapituloNaLista> = livro
+        .resumos()?
+        .into_iter()
+        .map(|resumo| {
+            // Sem `..`: campo novo no resumo quebra a compilação aqui.
+            let workspace::ResumoDoCapitulo {
+                nome,
+                titulo,
+                palavras,
+            } = resumo;
+            CapituloNaLista {
+                nome,
+                titulo,
+                palavras,
+            }
+        })
+        .collect();
     let mut avisos = Vec::new();
     if capitulos.is_empty() {
         avisos.push(
@@ -219,6 +243,38 @@ estilos:
     italico: true
 ";
 
+    fn nomes(livro: &LivroAberto) -> Vec<&str> {
+        livro
+            .capitulos
+            .iter()
+            .map(|capitulo| capitulo.nome.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn a_lista_traz_o_titulo_e_as_palavras_de_cada_capitulo() {
+        let pasta = pasta_com(&[
+            ("01.md", "# A casa\n\nEla abria as janelas.\n"),
+            ("02.md", "sem título"),
+        ]);
+        let livro = Sessao::default().abrir_pasta(pasta.path()).expect("abrir");
+        assert_eq!(
+            livro.capitulos,
+            [
+                CapituloNaLista {
+                    nome: "01.md".to_owned(),
+                    titulo: Some("A casa".to_owned()),
+                    palavras: Some(6),
+                },
+                CapituloNaLista {
+                    nome: "02.md".to_owned(),
+                    titulo: None,
+                    palavras: Some(2),
+                },
+            ]
+        );
+    }
+
     fn pasta_com(arquivos: &[(&str, &str)]) -> tempfile::TempDir {
         let pasta = tempfile::tempdir().expect("pasta temporária");
         for (nome, conteudo) in arquivos {
@@ -234,7 +290,11 @@ estilos:
 
         let livro = sessao.abrir_pasta(pasta.path()).expect("abrir");
 
-        assert_eq!(livro.capitulos, ["01.md", "02.md"]);
+        // Até 2026-11-23 `capitulos` era só a lista de nomes. A lateral do app
+        // passou a mostrar título e palavras, então cada item virou um resumo.
+        assert_eq!(nomes(&livro), ["01.md", "02.md"]);
+        assert_eq!(livro.capitulos[0].titulo, None);
+        assert_eq!(livro.capitulos[0].palavras, Some(1));
         // O caminho real: no macOS a pasta temporária fica atrás de um link
         // (`/var` aponta para `/private/var`), e o app mostra o destino.
         let real = pasta.path().canonicalize().expect("caminho real");
@@ -289,7 +349,7 @@ estilos:
         let pasta = pasta_com(&[("01.md", "um")]);
         let livro = Sessao::default().abrir_pasta(pasta.path()).expect("abrir");
         assert_eq!(livro.css, None);
-        assert_eq!(livro.capitulos, ["01.md"]);
+        assert_eq!(nomes(&livro), ["01.md"]);
         assert_eq!(livro.avisos.len(), 1, "{:?}", livro.avisos);
         assert!(
             livro.avisos[0].contains("estilo.yaml"),
@@ -304,7 +364,7 @@ estilos:
         let pasta = pasta_com(&[("01.md", "um"), ("estilo.yaml", &ruim)]);
         let livro = Sessao::default().abrir_pasta(pasta.path()).expect("abrir");
         assert_eq!(livro.css, None);
-        assert_eq!(livro.capitulos, ["01.md"]);
+        assert_eq!(nomes(&livro), ["01.md"]);
         assert!(
             livro.avisos.iter().any(|aviso| aviso.contains("1,25cm")),
             "{:?}",

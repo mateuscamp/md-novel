@@ -1,73 +1,158 @@
 /* A moldura do app. A tipografia do texto NÃO mora aqui: ela vem do CSS que
    o crate `estilo` gera do estilo.yaml. O que este arquivo define para a
    linha do editor é só o padrão de quando o livro não tem estilo, e o que o
-   estilo.yaml ainda não cobre (títulos e marcadores). */
+   estilo.yaml ainda não cobre (títulos, marcadores e os sinais do Markdown). */
 
+/* Tema claro: papel morno sobre uma mesa mais escura que ele. */
 :root {
-  --moldura: #f4f1ea;
-  --papel: #ffffff;
-  --tinta: #26221c;
-  --tinta-fraca: #7a7368;
-  --borda: #ddd6c8;
+  color-scheme: light;
+  --mesa: #ece7dd;
+  --lateral: #e4dfd3;
+  --papel: #fffdf8;
+  --tinta: #2b2722;
+  --tinta-fraca: #675f54;
+  --tinta-apagada: #a79f91;
+  --borda: #d6cfc0;
+  --realce: #00000010;
   --destaque: #8a5a2b;
-  --aviso: #fff4d6;
-  --erro: #fde2df;
-  --feito: #e3f1dd;
+  --destaque-fundo: #8a5a2b24;
+  --selecao: #e6d3b3;
+  --sombra: 0 1px 2px #0000001a, 0 10px 28px #00000014;
+  --aviso: #fff1cc;
+  --erro: #fbdcd8;
+  --erro-tinta: #a3261b;
+  --feito: #dfeed8;
   font: 14px/1.4 system-ui, sans-serif;
   color: var(--tinta);
 }
 
+/* Tema escuro. O `main.ts` põe `data-tema` na raiz: a escolha do autor ou,
+   se ele não escolheu, o que o sistema diz. */
+:root[data-tema="escuro"] {
+  color-scheme: dark;
+  --mesa: #1a1917;
+  --lateral: #201e1c;
+  --papel: #262421;
+  --tinta: #e2dcd0;
+  --tinta-fraca: #a39a8a;
+  --tinta-apagada: #6f685d;
+  --borda: #37332e;
+  --realce: #ffffff12;
+  --destaque: #d9a066;
+  --destaque-fundo: #d9a06626;
+  --selecao: #55472f;
+  --sombra: 0 1px 2px #00000066, 0 10px 28px #00000059;
+  --aviso: #45390f;
+  --erro: #4f211d;
+  --erro-tinta: #ff9d91;
+  --feito: #213b1d;
+}
+
 html, body { height: 100%; margin: 0; }
-body { display: flex; background: var(--moldura); }
+body { display: flex; background: var(--mesa); overflow: hidden; }
+
+button { font: inherit; color: inherit; }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible { outline: 2px solid var(--destaque); outline-offset: 1px; }
+
+/* O botão comum da moldura: discreto, só ganha fundo quando o mouse passa. */
+#acoes button, #lateral footer button, #vazio button, #avisos button, #sair-do-foco {
+  padding: 5px 11px; border: 1px solid var(--borda); border-radius: 6px;
+  background: transparent; cursor: pointer; white-space: nowrap;
+}
+#acoes button:not(:disabled):hover, #lateral footer button:hover, #vazio button:hover,
+#avisos button:hover, #sair-do-foco:hover { background: var(--realce); }
+
+/* ---- Lateral: o livro e os capítulos ---- */
 
 #lateral {
-  width: 240px; flex: none; display: flex; flex-direction: column;
-  border-right: 1px solid var(--borda); background: #ebe6db;
+  width: 264px; flex: none; display: flex; flex-direction: column;
+  border-right: 1px solid var(--borda); background: var(--lateral);
 }
-#lateral header { padding: 12px; border-bottom: 1px solid var(--borda); display: flex; flex-wrap: wrap; gap: 6px; }
-#lateral header h1 { flex-basis: 100%; }
-#nome-do-livro { margin: 0 0 8px; font-size: 15px; overflow-wrap: anywhere; }
-#capitulos { list-style: none; margin: 0; padding: 6px; overflow: auto; flex: 1; }
-#capitulos button {
-  width: 100%; text-align: left; padding: 6px 8px; border: 0; border-radius: 4px;
-  background: none; color: inherit; font: inherit; cursor: pointer; overflow-wrap: anywhere;
+#livro { padding: 16px 16px 12px; border-bottom: 1px solid var(--borda); }
+.rotulo {
+  margin: 0 0 2px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--tinta-fraca);
 }
-#capitulos button:hover { background: #ded7c8; }
-#capitulos button[aria-current="true"] { background: var(--destaque); color: #fff; }
+#nome-do-livro { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+#resumo-do-livro { margin: 4px 0 0; font-size: 12px; color: var(--tinta-fraca); }
+#resumo-do-livro:empty { display: none; }
 
-button { font: inherit; }
-#abrir-pasta, #exportar, #salvar, #avisos button {
-  padding: 4px 10px; border: 1px solid var(--borda); border-radius: 4px;
-  background: var(--papel); color: inherit; cursor: pointer;
+#lateral nav { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+#capitulos { list-style: none; margin: 0; padding: 0; }
+#capitulos button {
+  width: 100%; display: grid; grid-template-columns: 1fr auto; column-gap: 10px; align-items: baseline;
+  text-align: left; padding: 7px 10px 7px 12px; border: 0; border-radius: 6px;
+  border-left: 3px solid transparent; background: none; cursor: pointer;
 }
-button:disabled { opacity: 0.5; cursor: default; }
+#capitulos button:hover { background: var(--realce); }
+#capitulos button[aria-current="true"] { background: var(--destaque-fundo); border-left-color: var(--destaque); }
+#capitulos .titulo { overflow-wrap: anywhere; }
+#capitulos button[aria-current="true"] .titulo { font-weight: 600; }
+#capitulos .palavras { font-size: 12px; color: var(--tinta-fraca); font-variant-numeric: tabular-nums; }
+#capitulos .arquivo { grid-column: 1 / -1; font-size: 11px; color: var(--tinta-fraca); overflow-wrap: anywhere; }
+#capitulos .arquivo:empty { display: none; }
+
+#lateral footer { padding: 10px 12px; border-top: 1px solid var(--borda); }
+#lateral footer button { width: 100%; }
+
+/* ---- Coluna principal: barra, avisos, mesa e barra de status ---- */
 
 main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #barra {
-  display: flex; align-items: center; gap: 12px; padding: 8px 16px;
-  border-bottom: 1px solid var(--borda); min-height: 28px;
+  display: flex; align-items: center; gap: 16px; padding: 8px 12px 8px 20px;
+  border-bottom: 1px solid var(--borda); min-height: 32px;
 }
-#nome-do-capitulo { font-weight: 600; }
-#estado { margin-left: auto; color: var(--tinta-fraca); }
-#estado.erro { color: #a3261b; }
+#capitulo { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; overflow: hidden; }
+#nome-do-capitulo { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#arquivo-do-capitulo {
+  font-size: 12px; color: var(--tinta-fraca); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; flex-shrink: 2;
+}
+#acoes { display: flex; gap: 6px; }
 
 #avisos:empty { display: none; }
-#avisos p { margin: 0; padding: 8px 16px; background: var(--aviso); border-bottom: 1px solid var(--borda); }
+#avisos p {
+  margin: 0; padding: 8px 12px 8px 20px; display: flex; align-items: baseline; gap: 8px;
+  background: var(--aviso); border-bottom: 1px solid var(--borda);
+}
 #avisos p.erro { background: var(--erro); }
 #avisos p.feito { background: var(--feito); }
-#avisos p { display: flex; align-items: baseline; gap: 8px; }
 #avisos p > span { flex: 1; overflow-wrap: anywhere; }
-#avisos button.fechar { margin-left: auto; border: 0; background: none; padding: 0 4px; }
-#avisos button { margin-left: 8px; }
+#avisos button { padding: 2px 9px; white-space: normal; }
+#avisos button.fechar { border: 0; padding: 0 6px; font-size: 16px; line-height: 1; }
 
-#mesa { flex: 1; min-height: 0; display: flex; justify-content: center; }
-#vazio { align-self: center; color: var(--tinta-fraca); }
-#folha {
-  width: 17cm; max-width: 100%; height: 100%; background: var(--papel);
-  box-shadow: 0 0 12px #0002;
+#mesa { flex: 1; min-height: 0; display: flex; }
+#vazio { margin: auto; text-align: center; color: var(--tinta-fraca); }
+#vazio[hidden] { display: none; }
+#vazio p { margin: 0 0 14px; font-size: 15px; }
+#vazio button { color: var(--tinta); }
+
+#status {
+  display: flex; align-items: center; gap: 18px; padding: 5px 20px; min-height: 18px;
+  border-top: 1px solid var(--borda); font-size: 12px; color: var(--tinta-fraca);
+  font-variant-numeric: tabular-nums;
 }
-#folha .cm-editor { height: 100%; outline: none; }
-#folha .cm-content { padding: 2cm 1cm; caret-color: var(--tinta); }
+#status span:empty { display: none; }
+#estado { margin-left: auto; }
+#estado.erro { color: var(--erro-tinta); font-weight: 600; }
+
+/* ---- A folha ---- */
+
+/* Quem rola é o `.cm-scroller`, de fora a fora da mesa: a barra de rolagem
+   fica na beirada da janela e a folha (`.cm-content`) vai centrada nela. */
+#folha { flex: 1; min-width: 0; height: 100%; }
+#folha .cm-editor { height: 100%; outline: none; background: none; }
+#folha .cm-content {
+  /* 19 cm de folha com 2 cm de margem de cada lado: 15 cm de texto, perto
+     do que cabe numa A4 com margens de 3 cm. (O CodeMirror mede o
+     `.cm-content` pela borda, com `box-sizing: border-box`.) */
+  max-width: 19cm; margin: 24px auto; min-height: calc(100% - 48px);
+  padding: 2cm clamp(20px, 7vw, 2cm);
+  background: var(--papel); color: var(--tinta); caret-color: var(--tinta);
+  border-radius: 2px; box-shadow: var(--sombra);
+}
+#folha .cm-line::selection, #folha .cm-line ::selection { background: var(--selecao); }
 
 /* Padrão sem estilo.yaml. O CSS do livro usa `.cm-content .cm-line`, que é
    mais específico e vence este. */
@@ -78,8 +163,41 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .cm-content .cm-line.md-novel-titulo {
   text-indent: 0; text-align: left; font-weight: 600; font-style: normal;
 }
+/* O tamanho vai no texto do título, não na linha: `em` na linha contaria a
+   partir da moldura, e aqui conta a partir do tamanho que o livro pede.
+   Só dentro de uma linha `md-novel-titulo`: o analisador que põe `t1` segue
+   o CommonMark, e quem diz o que é título para o Pandoc é o `marcarLinhas`. */
+.md-novel-titulo .md-novel-t1 { font-size: 1.7em; }
+.md-novel-titulo .md-novel-t2 { font-size: 1.4em; }
+.md-novel-titulo .md-novel-t3 { font-size: 1.2em; }
 .cm-content .cm-line.md-novel-marcador {
-  text-indent: 0; text-align: left; font: 11px/1.6 monospace; color: var(--tinta-fraca);
+  text-indent: 0; text-align: left; font: 11px/1.6 monospace; color: var(--tinta-apagada);
   padding-top: 0; padding-bottom: 0;
 }
 .cm-content .cm-line.md-novel-vazia { text-indent: 0; }
+
+/* O Markdown à vista (ADR 0003): o texto fica como vai sair, e os sinais que
+   o autor digitou continuam na tela, apagados. Nada é escondido. */
+.md-novel-enfase { font-style: italic; }
+.md-novel-forte { font-weight: 700; }
+.md-novel-riscado { text-decoration: line-through; }
+.md-novel-link { color: var(--destaque); }
+.md-novel-codigo { font-family: monospace; font-size: 0.92em; }
+.md-novel-citacao, .md-novel-comentario { color: var(--tinta-fraca); }
+/* Por último: o sinal dentro de um trecho em negrito ou riscado continua leve. */
+.md-novel-sinal { color: var(--tinta-apagada); font-weight: 400; text-decoration: none; }
+
+/* ---- Modo foco: só a folha ---- */
+
+:root[data-foco="ligado"] #lateral,
+:root[data-foco="ligado"] #barra,
+:root[data-foco="ligado"] #status { display: none; }
+:root[data-foco="ligado"] body { background: var(--papel); }
+:root[data-foco="ligado"] #folha .cm-content { margin-block: 0; min-height: 100%; box-shadow: none; }
+#sair-do-foco {
+  /* Embaixo, para não cobrir o botão de dispensar dos avisos, que ficam em cima. */
+  position: fixed; bottom: 12px; right: 22px; font-size: 12px; color: var(--tinta-fraca);
+  opacity: 0.35; transition: opacity 0.15s;
+}
+#sair-do-foco:hover, #sair-do-foco:focus-visible { opacity: 1; }
+#sair-do-foco[hidden] { display: none; }

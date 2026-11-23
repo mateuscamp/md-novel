@@ -7,7 +7,9 @@
 mod erro;
 mod livro;
 mod saida;
+mod texto;
 
 pub use erro::ErroWorkspace;
-pub use livro::{Capitulo, Gravacao, Livro};
+pub use livro::{Capitulo, Gravacao, Livro, ResumoDoCapitulo};
 pub use saida::SaidaPendente;
+pub use texto::{contar_palavras, titulo_do_texto};

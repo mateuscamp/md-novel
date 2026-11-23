@@ -8,6 +8,7 @@ use std::str;
 
 use crate::erro::ErroWorkspace;
 use crate::saida::SaidaPendente;
+use crate::texto::{contar_palavras, titulo_do_texto};
 
 /// Marca de ordem de bytes do UTF-8, que alguns editores do Windows gravam.
 const BOM: &[u8] = b"\xEF\xBB\xBF";
@@ -40,6 +41,16 @@ pub struct Capitulo {
     bytes_lidos: Vec<u8>,
     formato: Formato,
     texto: String,
+}
+
+/// Um capítulo como aparece na lista do livro.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResumoDoCapitulo {
+    pub nome: String,
+    /// O primeiro título Markdown do texto, se houver.
+    pub titulo: Option<String>,
+    /// `None` quando o arquivo não pôde ser lido como capítulo.
+    pub palavras: Option<usize>,
 }
 
 /// O que `Capitulo::salvar` fez.
@@ -154,6 +165,29 @@ impl Livro {
         Ok(nomes)
     }
 
+    /// A lista do livro: cada capítulo com o título e a contagem de palavras.
+    ///
+    /// Lê todos os capítulos uma vez. Capítulo que não dá para ler (fora do
+    /// UTF-8, finais de linha misturados, grande demais) continua na lista,
+    /// sem título e sem contagem: o erro, com o motivo, aparece quando o
+    /// autor tenta abri-lo.
+    pub fn resumos(&self) -> Result<Vec<ResumoDoCapitulo>, ErroWorkspace> {
+        let resumos = self
+            .capitulos()?
+            .into_iter()
+            .map(|nome| {
+                let lido = self.ler_da_lista(&nome).ok();
+                let texto = lido.as_ref().map(Capitulo::texto);
+                ResumoDoCapitulo {
+                    titulo: texto.and_then(titulo_do_texto),
+                    palavras: texto.map(contar_palavras),
+                    nome,
+                }
+            })
+            .collect();
+        Ok(resumos)
+    }
+
     /// Lê um capítulo pelo nome que `capitulos` devolveu.
     pub fn ler_capitulo(&self, nome: &str) -> Result<Capitulo, ErroWorkspace> {
         // O nome vem da interface. Só vale se estiver na lista: nada de
@@ -163,6 +197,11 @@ impl Livro {
                 nome: nome.to_owned(),
             });
         }
+        self.ler_da_lista(nome)
+    }
+
+    /// Lê um arquivo que já se sabe estar na lista de capítulos.
+    fn ler_da_lista(&self, nome: &str) -> Result<Capitulo, ErroWorkspace> {
         let caminho = self.pasta.join(nome);
         let mut bytes = Vec::new();
         File::open(&caminho)?
