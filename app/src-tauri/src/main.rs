@@ -1,6 +1,7 @@
 //! md-novel, o programa de desktop. Adaptador fino: cada comando repassa
 //! para a `Sessao`, que é quem conhece o livro. Sem regra de estilo aqui.
 
+mod exportacao;
 mod sessao;
 
 use std::path::PathBuf;
@@ -12,6 +13,7 @@ use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 use workspace::Gravacao;
 
+use crate::exportacao::ExportacaoFeita;
 use crate::sessao::{ErroDeComando, LivroAberto, Sessao};
 
 #[derive(Default)]
@@ -53,6 +55,48 @@ fn escolher_pasta(
     estado.sessao().abrir_pasta(&pasta).map(Some)
 }
 
+/// Exporta o livro aberto para .docx. O destino vem do seletor de "salvar
+/// como" do sistema; `None` se o autor cancelou. A sessão só fica travada
+/// para tirar o plano: o Pandoc roda com ela livre.
+#[tauri::command(async)]
+fn exportar_livro(
+    app: AppHandle,
+    estado: State<'_, Estado>,
+) -> Result<Option<ExportacaoFeita>, ErroDeComando> {
+    let plano = estado.sessao().plano_de_exportacao()?;
+    let destino = match destino_de_teste() {
+        Some(destino) => destino,
+        None => {
+            let escolhido = app
+                .dialog()
+                .file()
+                .set_title("Exportar o livro para .docx")
+                .add_filter("Documento do Word", &["docx"])
+                .set_directory(&plano.pasta)
+                .set_file_name(format!("{}.docx", plano.nome))
+                .blocking_save_file();
+            let Some(escolhido) = escolhido else {
+                return Ok(None);
+            };
+            escolhido.into_path().map_err(|erro| ErroDeComando {
+                codigo: "erro",
+                mensagem: format!("o destino escolhido não é um caminho deste computador: {erro}"),
+            })?
+        }
+    };
+    exportacao::exportar(&plano, &destino).map(Some)
+}
+
+/// Destino fixo para o teste funcional, no lugar do seletor do sistema. Só
+/// existe em build de depuração.
+fn destino_de_teste() -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        std::env::var_os("MD_NOVEL_TESTE_EXPORTAR").map(PathBuf::from)
+    } else {
+        None
+    }
+}
+
 #[tauri::command]
 fn abrir_capitulo(nome: String, estado: State<'_, Estado>) -> Result<String, ErroDeComando> {
     estado.sessao().abrir_capitulo(&nome)
@@ -82,6 +126,8 @@ struct RoteiroDeTeste {
     digitar: String,
     /// Pedir para fechar a janela logo depois de digitar.
     fechar: bool,
+    /// Exportar o livro logo depois de digitar.
+    exportar: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -93,6 +139,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
     Some(RoteiroDeTeste {
         digitar: std::env::var("MD_NOVEL_TESTE_DIGITAR").ok()?,
         fechar: std::env::var_os("MD_NOVEL_TESTE_FECHAR").is_some(),
+        exportar: std::env::var_os("MD_NOVEL_TESTE_EXPORTAR").is_some(),
     })
 }
 
@@ -157,6 +204,7 @@ fn main() {
             escolher_pasta,
             abrir_capitulo,
             salvar_capitulo,
+            exportar_livro,
             registrar,
             roteiro_de_teste,
             teste_pedir_para_fechar,

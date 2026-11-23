@@ -124,10 +124,26 @@ tomadas nela:
 - **Janela de corrida ao salvar:** entre conferir o disco e trocar o arquivo
   cabe uma mudança externa de milissegundos. Aceito; fechar exigiria trava de
   arquivo, que o Dropbox não respeita.
-- **Fica de fora desta fatia:** exportar pelo app (a linha de comando faz),
-  `livro.yaml` com a ordem dos capítulos (vale a ordem de nome), esconder a
-  linha em branco entre parágrafos, tipografia de título, vigiar a pasta
-  enquanto o app está aberto, e o instalador.
+- **Fica de fora desta fatia:** `livro.yaml` com a ordem dos capítulos (vale
+  a ordem de nome), esconder a linha em branco entre parágrafos, tipografia
+  de título, vigiar a pasta enquanto o app está aberto, e o instalador.
+
+## A segunda fatia: exportar pelo app (2026-11-23)
+
+O botão "Exportar .docx…" gera o livro inteiro. Decisões:
+
+- **O destino vem do "salvar como" do sistema**, aberto pelo Rust, como a
+  pasta: a página continua sem mandar caminho e sem permissão nova.
+- **Salva antes de exportar.** A conversão lê os capítulos do disco; se
+  sobrou texto que não pôde ser salvo, a exportação não começa.
+- **A sessão não fica travada durante o Pandoc.** O que exportar (capítulos
+  em ordem e o texto do estilo) é tirado da sessão de uma vez; salvar um
+  capítulo continua possível enquanto a conversão roda.
+- **Sem `estilo.yaml` exporta com o padrão do Pandoc e avisa; com ele
+  inválido não exporta.** Um .docx com a cara errada passaria por certo.
+- **No macOS, aberto pelo Finder, o app pode não achar o Pandoc** (o PATH de
+  programa gráfico não inclui o Homebrew). Fica para quando houver
+  instalador; aberto pelo terminal, funciona.
 
 ## Consequências
 

@@ -2,15 +2,22 @@
 de livro temporária, deixa a interface digitar uma frase e confere o que
 chegou ao disco e o que o navegador aplicou.
 
-Uso: python3 -I teste_funcional.py <binário md-novel-app> [png da janela]
+Uso: python3 -I teste_funcional.py [--na-tela] <binário md-novel-app> [png da janela]
 
-Duas passadas:
+Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
+pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
+gráfica de verdade. O png, se pedido, é tirado depois de exportar.
+
+Três passadas:
 1. salvamento automático: digita e espera o app salvar sozinho;
 2. fechar a janela logo depois de digitar: o texto tem de chegar ao disco
    antes de a janela fechar.
+3. exportar logo depois de digitar: o capítulo é salvo antes, e o .docx sai
+   com os capítulos em ordem e o estilo do livro.
 
-Precisa de uma sessão gráfica; não roda no CI. A captura só acontece no
-Hyprland e pega apenas o retângulo da janela do app.
+Não roda no CI. Sem `xvfb-run` instalado ele precisa de `--na-tela`. No
+display virtual a captura usa o `import` do ImageMagick; na tela de verdade
+só acontece no Hyprland e pega apenas o retângulo da janela do app.
 """
 
 import json
@@ -23,6 +30,7 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 
 LIMITE_SEGUNDOS = 60
 FRASE = " Frase digitada pelo teste funcional."
@@ -42,7 +50,12 @@ PARAGRAFO = (
     "dos barcos que desciam carregados de sal e de farinha.\r\n\r\n"
 )
 SEGUNDO_CAPITULO = "# Capítulo dois\n\nOutro capítulo.\n".encode()
-TEM_HYPRLAND = shutil.which("hyprctl") is not None and shutil.which("grim") is not None
+FORA_DA_TELA = os.environ.get("MD_NOVEL_TESTE_FORA_DA_TELA") == "1"
+TEM_HYPRLAND = (
+    shutil.which("hyprctl") is not None
+    and shutil.which("grim") is not None
+    and "HYPRLAND_INSTANCE_SIGNATURE" in os.environ
+)
 
 
 def montar_livro(pasta: pathlib.Path) -> bytes:
@@ -76,10 +89,14 @@ class App:
     """O binário rodando numa pasta de livro, com a saída lida numa thread:
     um app que não imprime nada não segura o teste além do limite."""
 
-    def __init__(self, binario: str, pasta: pathlib.Path, fechar: bool = False):
+    def __init__(
+        self, binario: str, pasta: pathlib.Path, fechar: bool = False, exportar_para: pathlib.Path | None = None
+    ):
         ambiente = {**os.environ, "MD_NOVEL_TESTE_DIGITAR": FRASE}
         if fechar:
             ambiente["MD_NOVEL_TESTE_FECHAR"] = "1"
+        if exportar_para is not None:
+            ambiente["MD_NOVEL_TESTE_EXPORTAR"] = str(exportar_para)
         self.processo = subprocess.Popen(
             [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
         )
@@ -132,7 +149,7 @@ def conferir_disco(pasta: pathlib.Path, original: bytes, falhas: list[str], pass
         falhas.append(f"{passada}: arquivos na pasta do livro: {sobras}")
 
 
-def passada_do_salvamento_automatico(binario: str, destino: str | None, falhas: list[str]) -> None:
+def passada_do_salvamento_automatico(binario: str, falhas: list[str]) -> None:
     print("passada 1: salvamento automático")
     with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
         pasta = pathlib.Path(temporaria)
@@ -141,9 +158,6 @@ def passada_do_salvamento_automatico(binario: str, destino: str | None, falhas: 
         try:
             if app.esperar_linha("salvo:") is None:
                 falhas.append("passada 1: o app não chegou a salvar")
-            elif destino and TEM_HYPRLAND:
-                time.sleep(1)
-                print("  " + capturar(app.processo.pid, destino))
         finally:
             app.encerrar()
 
@@ -191,12 +205,95 @@ def passada_de_fechar_a_janela(binario: str, falhas: list[str]) -> None:
         conferir_disco(pasta, original, falhas, "passada 2")
 
 
+def capturar_o_display_virtual(destino: str) -> str:
+    """No display virtual a janela do app é a única coisa que existe."""
+    if shutil.which("import") is None:
+        return "captura: sem o `import` do ImageMagick, nada foi fotografado"
+    subprocess.run(["import", "-window", "root", destino], check=True)
+    return f"captura: display virtual em {destino}"
+
+
+def passada_de_exportar(binario: str, captura: str | None, falhas: list[str]) -> None:
+    print("passada 3: exportar para .docx logo depois de digitar")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria, tempfile.TemporaryDirectory(
+        prefix="md-novel-saida-"
+    ) as saida:
+        pasta = pathlib.Path(temporaria)
+        original = montar_livro(pasta)
+        destino = pathlib.Path(saida) / "livro.docx"
+        # O destino vem por variável de ambiente no lugar do seletor do sistema.
+        app = App(binario, pasta, exportar_para=destino)
+        try:
+            if app.esperar_linha("exportado:") is None:
+                falhas.append("passada 3: o app não chegou a exportar")
+                return
+            if captura:
+                # Depois de exportar a janela mostra o aviso de livro exportado.
+                time.sleep(1)
+                if FORA_DA_TELA:
+                    print("  " + capturar_o_display_virtual(captura))
+                elif TEM_HYPRLAND:
+                    print("  " + capturar(app.processo.pid, captura))
+        finally:
+            app.encerrar()
+        conferir_disco(pasta, original, falhas, "passada 3")
+        if not destino.exists():
+            falhas.append("passada 3: o .docx não apareceu no destino")
+            return
+        with zipfile.ZipFile(destino) as docx:
+            documento = docx.read("word/document.xml").decode()
+            estilos = docx.read("word/styles.xml").decode()
+        # A frase foi digitada um instante antes: se está no .docx, o app
+        # salvou o capítulo antes de exportar.
+        if FRASE.strip() not in documento:
+            falhas.append("passada 3: o .docx não tem a frase digitada; o capítulo não foi salvo antes de exportar")
+        if '<w:pStyle w:val="Epígrafe"' not in documento:
+            falhas.append("passada 3: a epígrafe não saiu com o estilo nomeado")
+        if "Capítulo dois" not in documento or documento.find("Capítulo um") > documento.find("Capítulo dois"):
+            falhas.append("passada 3: os capítulos não saíram em ordem")
+        if '<w:jc w:val="both"' not in estilos:
+            falhas.append("passada 3: o corpo não saiu justificado como manda o estilo.yaml")
+        if "0 avisos" not in app.linha_com("exportado:"):
+            falhas.append(f"passada 3: {app.linha_com('exportado:')!r}")
+
+
+def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
+    """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
+    X11 dele, com desenho por software, e nada aparece na tela."""
+    ambiente = {
+        chave: valor
+        for chave, valor in os.environ.items()
+        if chave not in ("WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE")
+    }
+    ambiente.update(
+        GDK_BACKEND="x11",
+        LIBGL_ALWAYS_SOFTWARE="1",
+        WEBKIT_DISABLE_DMABUF_RENDERER="1",
+        MD_NOVEL_TESTE_FORA_DA_TELA="1",
+    )
+    comando = ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1200x900x24"]
+    absolutos = [str(pathlib.Path(argumento).resolve()) for argumento in argumentos]
+    comando += [sys.executable, "-I", "-B", str(pathlib.Path(__file__).resolve()), *absolutos]
+    return subprocess.run(comando, env=ambiente, check=False).returncode
+
+
 def principal() -> int:
-    binario = sys.argv[1]
-    destino = sys.argv[2] if len(sys.argv) > 2 else None
+    argumentos = [argumento for argumento in sys.argv[1:] if argumento != "--na-tela"]
+    na_tela = "--na-tela" in sys.argv[1:]
+    if not argumentos:
+        print(__doc__)
+        return 2
+    if not na_tela and not FORA_DA_TELA:
+        if shutil.which("xvfb-run") is None:
+            print("sem xvfb-run: instale o Xvfb ou passe --na-tela para abrir a janela na sua tela")
+            return 2
+        return reexecutar_fora_da_tela(argumentos)
+    binario = argumentos[0]
+    captura = argumentos[1] if len(argumentos) > 1 else None
     falhas: list[str] = []
-    passada_do_salvamento_automatico(binario, destino, falhas)
+    passada_do_salvamento_automatico(binario, falhas)
     passada_de_fechar_a_janela(binario, falhas)
+    passada_de_exportar(binario, captura, falhas)
     for falha in falhas:
         print(f"FALHOU: {falha}")
     print("teste funcional:", "reprovado" if falhas else "aprovado")
