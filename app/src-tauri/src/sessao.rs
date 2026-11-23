@@ -210,7 +210,10 @@ estilos:
         let livro = sessao.abrir_pasta(pasta.path()).expect("abrir");
 
         assert_eq!(livro.capitulos, ["01.md", "02.md"]);
-        assert_eq!(livro.pasta, pasta.path().display().to_string());
+        // O caminho real: no macOS a pasta temporária fica atrás de um link
+        // (`/var` aponta para `/private/var`), e o app mostra o destino.
+        let real = pasta.path().canonicalize().expect("caminho real");
+        assert_eq!(livro.pasta, real.display().to_string());
         assert_eq!(
             livro.nome,
             pasta.path().file_name().expect("nome").to_string_lossy()
