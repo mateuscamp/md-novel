@@ -380,3 +380,40 @@ fn modelo_fora_do_formato_e_rejeitado_em_vez_de_gerar_docx_torto() {
     let erro = gerar_reference_docx(b"isto nao e um zip", &romance()).expect_err("não é zip");
     assert!(matches!(erro, ErroEstilo::ModeloZip(_)), "veio {erro}");
 }
+
+/// O exemplo do README é o primeiro estilo.yaml que o autor copia: ele não
+/// pode deixar de valer quando o schema mudar.
+#[test]
+fn exemplo_do_readme_e_valido_e_usa_todas_as_chaves() {
+    let caminho =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exemplos/estilo.yaml");
+    let yaml = std::fs::read_to_string(&caminho)
+        .unwrap_or_else(|erro| panic!("ler {}: {erro}", caminho.display()));
+    let estilo = Estilo::de_yaml(&yaml).unwrap_or_else(|erro| panic!("exemplo inválido: {erro}"));
+    // Cada chave do schema aparece escrita no corpo do exemplo, para o autor
+    // ver todas as opções num lugar só. As chaves vêm do próprio schema: uma
+    // propriedade nova reprova aqui até entrar no exemplo.
+    let valor = serde_yaml_ng::to_value(&estilo.corpo).expect("serializar o corpo");
+    let chaves: Vec<&str> = valor
+        .as_mapping()
+        .expect("o corpo é um mapa")
+        .keys()
+        .map(|chave| chave.as_str().expect("chave é texto"))
+        .collect();
+    assert!(
+        chaves.len() >= 9,
+        "esperava as chaves do schema, veio {chaves:?}"
+    );
+    for chave in chaves {
+        assert!(
+            yaml.contains(&format!("\n  {chave}:")),
+            "o corpo do exemplo não mostra {chave}"
+        );
+    }
+    assert!(
+        !estilo.estilos.is_empty(),
+        "o exemplo mostra ao menos um estilo nomeado"
+    );
+    let docx = gerar_reference_docx(&modelo(), &estilo).expect("o exemplo gera o reference.docx");
+    assert!(!docx.is_empty());
+}
