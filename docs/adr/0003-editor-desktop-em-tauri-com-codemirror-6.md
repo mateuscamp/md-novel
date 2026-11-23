@@ -145,6 +145,49 @@ O botão "Exportar .docx…" gera o livro inteiro. Decisões:
   programa gráfico não inclui o Homebrew). Fica para quando houver
   instalador; aberto pelo terminal, funciona.
 
+## A terceira fatia: a moldura (2026-11-23)
+
+O autor pediu o app "mais refinado, como o novelWriter e o Zettlr", e
+escolheu as quatro partes: lateral com título e palavras, barra de status,
+Markdown à vista e modo foco, com tema claro e escuro. Decisões:
+
+- **A contagem de palavras e o título do capítulo são regra do `workspace`**
+  (`texto.rs`), que é quem lê os capítulos para montar a lista. A interface
+  repete as duas funções (`app/src/texto.ts`) para contar enquanto o autor
+  digita, sem ir ao Rust a cada tecla. Duas implementações da mesma regra
+  divergem com o tempo; o que as segura é um arquivo de casos só
+  (`crates/workspace/tests/fixtures/`), lido pelos testes dos dois lados.
+  Perde-se: toda mudança na regra é feita duas vezes.
+- **A lista do livro passou a ser `{nome, titulo, palavras}`** no lugar de só
+  os nomes. Abrir a pasta lê todos os capítulos uma vez. Capítulo que não dá
+  para ler continua na lista, sem números; o motivo aparece ao abri-lo.
+- **Markdown à vista, nunca escondido.** Itálico, negrito e títulos aparecem
+  como vão sair, e os sinais digitados (`*`, `#`, `>`) ficam na tela,
+  apagados. Esconder o sinal fora do cursor, como o Zettlr faz, muda o que o
+  autor vê do que está no arquivo; aqui o arquivo é o que está na tela.
+- **Só o analisador `@lezer/markdown`, sem `@codemirror/lang-markdown`.** O
+  pacote completo traz junto as linguagens HTML, CSS e JavaScript, que um
+  romance não usa. O analisador lê CommonMark; o `:::` do Pandoc ele vê como
+  texto, e quem cuida dele continua sendo o `marcarLinhas`. Perde-se: o que
+  o Pandoc lê diferente do CommonMark pode aparecer diferente na tela.
+- **Título é o que o Pandoc lê como título, não o CommonMark.** A primeira
+  versão desta fatia seguia o CommonMark e a revisão achou a diferença: para
+  o Pandoc o título não pode vir colado num parágrafo nem recuado, pode ter
+  mais de seis `#` e perde os `#` do fim mesmo colados. A regra da lateral
+  (`titulo_do_texto`) e a da linha do editor (`marcarLinhas`) passaram a ser
+  essa, e o tamanho de título só vale em linha que o `marcarLinhas` aceita.
+  Fica de fora o título sublinhado (`===`, `---`), que o Pandoc lê e a tela
+  ainda não mostra.
+- **O tema é da moldura, não do livro.** A escolha (sistema, claro ou
+  escuro) fica no `localStorage` da janela, que o sistema guarda na pasta de
+  dados do app, fora da pasta do livro. O CSS do `estilo.yaml` não define
+  cor, então o tema não muda o que vai para o .docx.
+- **No modo foco os avisos continuam na tela.** Somem a lateral e as barras;
+  texto que não foi salvo não pode passar despercebido.
+- **O teste funcional roda com a pasta de dados do app num temporário** e
+  recebe o tema pelo roteiro de teste, sem guardar: ele não lê nem muda a
+  escolha de quem usa o programa na mesma máquina.
+
 ## Consequências
 
 **Ganha:** o núcleo em Rust que já existe entra no app sem ponte; o CSS gerado
@@ -176,6 +219,10 @@ trocar deixa para trás o que estiver guardado no nome antigo.
 |---|---|---|---|
 | Critério do spike | medição embutida no spike (latência e quadros) e captura de tela | Hyprland/RTX 4070 e M1, uma vez | p95 > 33 ms, janela sem aceleração ou tipografia errada |
 | Núcleo sem Tauri | `crates/estilo/tests/fronteira.rs` (já existe) e o mesmo teste em `crates/exportar` | `make check` | `tauri` aparece como dependência de um crate do núcleo |
+| Contagem e título iguais no Rust e na interface | `crates/workspace/tests/texto.rs` e `app/src/texto.test.ts`, os dois lendo `crates/workspace/tests/fixtures/` | `make check` | um dos lados dá outro número ou outro título para um caso do arquivo |
+| Os casos de título são o que o Pandoc lê | `crates/exportar/tests/titulos_pandoc.rs`, que passa cada caso de `titulos.txt` pelo Pandoc | `make check` | o arquivo de casos afirma um título que o Pandoc não dá |
+| Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
+| A moldura na janela de verdade | `app/teste_funcional.py`, passadas 1, 4, 5 e 6 | à mão, fora do CI | contagem na tela diferente da conta do teste, título colado com tamanho de título, tema sem efeito ou esquecido ao reabrir, barras visíveis no modo foco ou aviso escondido nele |
 
 Regra derivada no `AGENTS.md`, quando aceito: o app (`src-tauri`) é
 adaptador fino; regra de estilo e chamada ao Pandoc continuam nos crates.

@@ -1,0 +1,17 @@
+# Casos da contagem de palavras, lidos pelos testes do Rust (crates/workspace)
+# e da interface (app/src/texto.test.ts): as duas implementações têm de dar o
+# mesmo número. Formato: palavras|texto, com \n no lugar da quebra de linha.
+0|
+3|Uma frase simples.
+4|Coração — “aspas” e travessão
+3|palavra-composta e d'água
+4|# Capítulo um\n\nTexto aqui.
+3|::: {custom-style="Epígrafe"}\nA pele guarda.\n:::
+3|**negrito** e *itálico*
+4|1984 foi um ano
+5|linha	com	tab  e   espaços
+0|* * *
+0|—  …  !
+5|texto[^1]\n\n[^1]: Nota de rodapé.
+6|Um.\nDois.\n\n\nTrês, quatro; cinco: seis!
+2|:::: {.nota}\ndentro conta\n::::

@@ -2,14 +2,19 @@
 // direto nelas. A tipografia vem toda do CSS gerado pelo crate `estilo`.
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defineLanguageFacet, Language, syntaxHighlighting } from "@codemirror/language";
 import { EditorState, type Extension, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { tagHighlighter, tags } from "@lezer/highlight";
+import { parser, Strikethrough } from "@lezer/markdown";
 import { marcarLinhas } from "./blocos.ts";
 
 export interface Editor {
   /** Troca o texto inteiro (outro capítulo): o desfazer começa do zero. */
   definirTexto(texto: string): void;
   texto(): string;
+  /** O texto selecionado; vazio se não há seleção. */
+  selecao(): string;
   focar(): void;
   /** Digita no fim do texto, como o autor faria. Usado pelo teste funcional. */
   digitarNoFim(texto: string): void;
@@ -47,7 +52,37 @@ const marcasDasLinhas = StateField.define<DecorationSet>({
   provide: (campo) => EditorView.decorations.from(campo),
 });
 
-export function criarEditor(pai: HTMLElement, aoMudar: () => void, aoSalvar: () => void): Editor {
+// O Markdown à vista: o analisador do Lezer acha a ênfase, os títulos e os
+// sinais, e cada um ganha uma classe que o `app.css` pinta. Só o analisador
+// (`@lezer/markdown`), sem o pacote `lang-markdown`, que traria junto HTML,
+// CSS e JavaScript. O `:::` do Pandoc ele lê como texto comum; quem cuida
+// dele é o `marcarLinhas`.
+const markdown = new Language(defineLanguageFacet(), parser.configure(Strikethrough), [], "markdown");
+const realce = tagHighlighter([
+  { tag: tags.emphasis, class: "md-novel-enfase" },
+  { tag: tags.strong, class: "md-novel-forte" },
+  { tag: tags.strikethrough, class: "md-novel-riscado" },
+  { tag: tags.heading1, class: "md-novel-t1" },
+  { tag: tags.heading2, class: "md-novel-t2" },
+  { tag: tags.heading3, class: "md-novel-t3" },
+  { tag: [tags.link, tags.url], class: "md-novel-link" },
+  { tag: tags.monospace, class: "md-novel-codigo" },
+  { tag: tags.quote, class: "md-novel-citacao" },
+  { tag: tags.comment, class: "md-novel-comentario" },
+  // Os sinais digitados: `*`, `#`, `>`, o traço da lista.
+  { tag: tags.processingInstruction, class: "md-novel-sinal" },
+]);
+
+export interface AoEditar {
+  /** O texto mudou. */
+  aoMudar(): void;
+  /** O autor pediu para salvar (Ctrl+S). */
+  aoSalvar(): void;
+  /** A seleção mudou, com ou sem mudança no texto. */
+  aoSelecionar(): void;
+}
+
+export function criarEditor(pai: HTMLElement, { aoMudar, aoSalvar, aoSelecionar }: AoEditar): Editor {
   const extensoes: Extension = [
     EditorView.lineWrapping,
     history(),
@@ -57,11 +92,14 @@ export function criarEditor(pai: HTMLElement, aoMudar: () => void, aoSalvar: () 
       ...historyKeymap,
     ]),
     marcasDasLinhas,
+    markdown.extension,
+    syntaxHighlighting(realce),
     // Altura fixa e rolagem própria: sem isto o CodeMirror desenha o
     // capítulo inteiro de uma vez (lição do spike, ADR 0003).
     EditorView.theme({ "&": { height: "100%" }, ".cm-scroller": { overflow: "auto" } }),
     EditorView.updateListener.of((atualizacao) => {
       if (atualizacao.docChanged) aoMudar();
+      if (atualizacao.selectionSet) aoSelecionar();
     }),
     EditorView.contentAttributes.of({ spellcheck: "true", lang: "pt-BR" }),
   ];
@@ -70,6 +108,11 @@ export function criarEditor(pai: HTMLElement, aoMudar: () => void, aoSalvar: () 
     view,
     definirTexto: (texto) => view.setState(EditorState.create({ doc: texto, extensions: extensoes })),
     texto: () => view.state.doc.toString(),
+    selecao: () =>
+      view.state.selection.ranges
+        .filter((trecho) => !trecho.empty)
+        .map((trecho) => view.state.sliceDoc(trecho.from, trecho.to))
+        .join("\n"),
     focar: () => view.focus(),
     digitarNoFim: (texto) => {
       const fim = view.state.doc.length;

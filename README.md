@@ -7,10 +7,13 @@ editor e o `reference.docx` do Pandoc, de modo que a tela e o .docx recebem as
 mesmas propriedades.
 
 **Estado:** há um programa de desktop na primeira versão (abre a pasta do
-livro, edita com a tipografia do `estilo.yaml`, salva e exporta o .docx) e
-uma linha de comando, que gera o CSS, o reference.docx e também exporta.
+livro, edita com a tipografia do `estilo.yaml`, conta as palavras, salva e
+exporta o .docx) e uma linha de comando, que gera o CSS, o reference.docx e
+também exporta.
 
-![A janela do md-novel com um capítulo aberto](docs/imagens/app-linux.png)
+![A janela do md-novel com um capítulo aberto, no tema claro](docs/imagens/app-linux.png)
+
+![A mesma janela no tema escuro](docs/imagens/app-linux-escuro.png)
 
 ## Instalação da linha de comando
 
@@ -72,6 +75,16 @@ O que ele faz hoje:
 - Se o arquivo mudou no disco depois que você abriu (outro computador pelo
   Dropbox, outro editor), ele não grava por cima: avisa e oferece recarregar.
 - Avisa quando a fonte do estilo não está instalada.
+- A lateral mostra cada capítulo pelo título (o primeiro `# ...` do texto),
+  com o nome do arquivo e o número de palavras, e o total do livro. A barra
+  de baixo conta as palavras do capítulo enquanto você digita, as da seleção
+  e as do livro.
+- O Markdown fica à vista: itálico, negrito e títulos aparecem como vão
+  sair, e os sinais que você digitou (`*`, `#`) continuam na tela, apagados.
+- Tema claro e escuro. O botão "Tema" passa por sistema, claro e escuro, e a
+  escolha fica guardada. O tema é só da janela: não muda o .docx.
+- Modo foco (botão "Foco" ou F8): fica só a folha. Esc ou F8 sai. Os avisos
+  continuam aparecendo.
 - "Exportar .docx…" salva o que está na tela, pergunta onde gravar e gera o
   livro inteiro, com os capítulos em ordem e o estilo do `estilo.yaml`. Os
   avisos do Pandoc (uma imagem que não foi achada, por exemplo) aparecem na
@@ -147,6 +160,11 @@ No Zettlr há limites que o programa de desktop já resolve em parte:
 - **Entrelinha aproximada na tela.** O Word mede a linha simples pela fonte; o
   CSS usa 1,2 vez o tamanho, a menos que o editor defina
   `--md-novel-linha-simples`.
+- **Título é o que o Pandoc lê como título.** Ele precisa de uma linha em
+  branco antes: um `# ...` colado no parágrafo de cima sai como texto, e é
+  assim que a tela mostra. O título sublinhado (uma linha de `===` ou `---`
+  logo abaixo do texto) o programa ainda não reconhece na tela, mas o Pandoc
+  sim: deixe uma linha em branco antes de um `---` de quebra de cena.
 - **Só de ida.** O md-novel não lê de volta o .docx revisado pela editora: as
   mudanças voltam para os .md à mão ([ADR 0001](docs/adr/0001-exportar-so-de-ida-md-para-docx.md)).
 - **Fica de fora, por enquanto:** títulos, tamanho de página, margens e

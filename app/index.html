@@ -7,25 +7,47 @@
   </head>
   <body>
     <aside id="lateral">
-      <header>
+      <header id="livro">
+        <p class="rotulo">Livro</p>
         <h1 id="nome-do-livro">md-novel</h1>
-        <button id="abrir-pasta" type="button">Abrir pasta…</button>
-        <button id="exportar" type="button" disabled>Exportar .docx…</button>
+        <p id="resumo-do-livro"></p>
       </header>
-      <ul id="capitulos"></ul>
+      <nav aria-label="Capítulos">
+        <ol id="capitulos"></ol>
+      </nav>
+      <footer>
+        <button id="abrir-pasta" type="button">Abrir pasta…</button>
+      </footer>
     </aside>
     <main>
-      <div id="barra">
-        <span id="nome-do-capitulo"></span>
-        <span id="estado" role="status"></span>
-        <button id="salvar" type="button" disabled>Salvar</button>
-      </div>
+      <header id="barra">
+        <div id="capitulo">
+          <span id="nome-do-capitulo"></span>
+          <span id="arquivo-do-capitulo"></span>
+        </div>
+        <div id="acoes">
+          <button id="tema" type="button" title="Trocar o tema: do sistema, claro ou escuro">Tema: sistema</button>
+          <button id="foco" type="button" title="Modo foco: só a folha na tela (F8)">Foco</button>
+          <button id="exportar" type="button" disabled>Exportar .docx…</button>
+          <button id="salvar" type="button" disabled>Salvar</button>
+        </div>
+      </header>
       <div id="avisos"></div>
       <div id="mesa">
-        <p id="vazio">Abra a pasta onde ficam os capítulos do livro.</p>
+        <div id="vazio">
+          <p id="texto-do-vazio">Abra a pasta onde ficam os capítulos do livro.</p>
+          <button id="abrir-pasta-do-vazio" type="button">Abrir pasta…</button>
+        </div>
         <div id="folha" hidden></div>
       </div>
+      <footer id="status">
+        <span id="palavras-do-capitulo"></span>
+        <span id="palavras-da-selecao"></span>
+        <span id="palavras-do-livro"></span>
+        <span id="estado" role="status"></span>
+      </footer>
     </main>
+    <button id="sair-do-foco" type="button" title="Sair do modo foco (Esc ou F8)" hidden>Sair do foco</button>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

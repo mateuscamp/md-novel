@@ -6,14 +6,25 @@ Uso: python3 -I teste_funcional.py [--na-tela] <binário md-novel-app> [png da j
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
-gráfica de verdade. O png, se pedido, é tirado depois de exportar.
+gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
+passadas 4 e 5 gravam ao lado dele `<nome>-escuro.png` e `<nome>-foco.png`.
 
-Três passadas:
-1. salvamento automático: digita e espera o app salvar sozinho;
+Seis passadas:
+1. salvamento automático: digita e espera o app salvar sozinho; confere
+   também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
+   do Markdown;
 2. fechar a janela logo depois de digitar: o texto tem de chegar ao disco
    antes de a janela fechar.
 3. exportar logo depois de digitar: o capítulo é salvo antes, e o .docx sai
    com os capítulos em ordem e o estilo do livro.
+4. tema escuro: a folha fica mais escura que a tinta.
+5. modo foco: somem a lateral e as barras, e os avisos continuam na tela.
+6. a escolha de tema fica guardada: clica no botão, fecha, abre de novo.
+
+O app roda com a pasta de dados dele num temporário: o teste não lê nem
+muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
+fontes instaladas só para o usuário (`~/.local/share/fonts`) também ficam de
+fora: o teste só enxerga as fontes do sistema.
 
 Não roda no CI. Sem `xvfb-run` instalado ele precisa de `--na-tela`. No
 display virtual a captura usa o `import` do ImageMagick; na tela de verdade
@@ -24,6 +35,7 @@ import json
 import os
 import pathlib
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -43,13 +55,21 @@ ABERTURA = (
     '::: {custom-style="Epígrafe"}\r\n'
     "A pele guarda o que a memória solta.\r\n"
     ":::\r\n\r\n"
+    "Um parágrafo com *ênfase*, com **força** e com ~~um corte~~.\r\n\r\n"
 )
 PARAGRAFO = (
     "A casa ficava no alto do morro e de lá se via o rio inteiro quando a "
     "neblina deixava. Ela abria as janelas antes do café e esperava o barulho "
     "dos barcos que desciam carregados de sal e de farinha.\r\n\r\n"
 )
+# No fim do capítulo, longe da captura: um título colado num parágrafo, que
+# para o Pandoc é texto do parágrafo e na tela não pode ficar com cara de título.
+COLADO = "Um parágrafo com um título colado.\r\n# Para o Pandoc isto não é título\r\n\r\n"
 SEGUNDO_CAPITULO = "# Capítulo dois\n\nOutro capítulo.\n".encode()
+PALAVRAS_DA_FRASE = 5
+# Um estilo com fonte que não existe: o app avisa, e o aviso tem de continuar
+# na tela no modo foco.
+ESTILO_COM_FONTE_AUSENTE = "\n  Placa:\n    fonte: Fonte Que Nao Existe 0000\n"
 FORA_DA_TELA = os.environ.get("MD_NOVEL_TESTE_FORA_DA_TELA") == "1"
 TEM_HYPRLAND = (
     shutil.which("hyprctl") is not None
@@ -58,10 +78,36 @@ TEM_HYPRLAND = (
 )
 
 
-def montar_livro(pasta: pathlib.Path) -> bytes:
-    shutil.copy(RAIZ / "exemplos" / "estilo.yaml", pasta / "estilo.yaml")
+def contar_palavras(texto: str) -> int:
+    """A regra de `crates/workspace/src/texto.rs`, refeita aqui para conferir
+    o número que aparece na tela sem perguntar ao próprio app."""
+    return sum(
+        1
+        for linha in texto.splitlines()
+        if not linha.lstrip().startswith(":::")
+        for trecho in linha.split()
+        if any(caractere.isalnum() for caractere in trecho)
+    )
+
+
+def inteiro(texto: str) -> int:
+    return int(texto.replace(".", ""))
+
+
+def claridade(linha: str, nome: str) -> float | None:
+    """A claridade (0 a 255) da cor `nome=rgb(r, g, b)` numa linha da interface."""
+    achado = re.search(rf"{nome}=rgba?\((\d+), (\d+), (\d+)", linha)
+    if achado is None:
+        return None
+    vermelho, verde, azul = (int(valor) for valor in achado.groups())
+    return 0.2126 * vermelho + 0.7152 * verde + 0.0722 * azul
+
+
+def montar_livro(pasta: pathlib.Path, estilo_a_mais: str = "") -> bytes:
+    estilo = (RAIZ / "exemplos" / "estilo.yaml").read_text(encoding="utf-8")
+    (pasta / "estilo.yaml").write_text(estilo + estilo_a_mais, encoding="utf-8")
     # CR LF de propósito: salvar tem de manter o formato do arquivo.
-    primeiro = (ABERTURA + PARAGRAFO * 60).encode()
+    primeiro = (ABERTURA + PARAGRAFO * 60 + COLADO).encode()
     (pasta / "01-abertura.md").write_bytes(primeiro)
     (pasta / "02-a-casa.md").write_bytes(SEGUNDO_CAPITULO)
     return primeiro
@@ -90,13 +136,38 @@ class App:
     um app que não imprime nada não segura o teste além do limite."""
 
     def __init__(
-        self, binario: str, pasta: pathlib.Path, fechar: bool = False, exportar_para: pathlib.Path | None = None
+        self,
+        binario: str,
+        pasta: pathlib.Path,
+        fechar: bool = False,
+        exportar_para: pathlib.Path | None = None,
+        tema: str | None = "claro",
+        foco: bool = False,
+        cliques_no_tema: int = 0,
+        dados: pathlib.Path | None = None,
     ):
-        ambiente = {**os.environ, "MD_NOVEL_TESTE_DIGITAR": FRASE}
+        # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
+        # cache) vai para um temporário: a de quem usa o programa não é tocada.
+        # `dados` reaproveita a de outra janela, como numa segunda abertura.
+        self._dados = None if dados is not None else tempfile.TemporaryDirectory(prefix="md-novel-dados-")
+        dados = dados if dados is not None else pathlib.Path(self._dados.name)
+        ambiente = {
+            **os.environ,
+            "MD_NOVEL_TESTE_DIGITAR": FRASE,
+            "MD_NOVEL_TESTE_CLIQUES_NO_TEMA": str(cliques_no_tema),
+            "XDG_DATA_HOME": str(dados / "dados"),
+            "XDG_CACHE_HOME": str(dados / "cache"),
+        }
+        # Sem tema no roteiro vale a escolha guardada, como para o autor.
+        ambiente.pop("MD_NOVEL_TESTE_TEMA", None)
+        if tema is not None:
+            ambiente["MD_NOVEL_TESTE_TEMA"] = tema
         if fechar:
             ambiente["MD_NOVEL_TESTE_FECHAR"] = "1"
         if exportar_para is not None:
             ambiente["MD_NOVEL_TESTE_EXPORTAR"] = str(exportar_para)
+        if foco:
+            ambiente["MD_NOVEL_TESTE_FOCO"] = "1"
         self.processo = subprocess.Popen(
             [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
         )
@@ -134,6 +205,9 @@ class App:
             self.processo.wait(timeout=10)
         except subprocess.TimeoutExpired:
             self.processo.kill()
+            self.processo.wait()
+        if self._dados is not None:
+            self._dados.cleanup()
 
 
 def conferir_disco(pasta: pathlib.Path, original: bytes, falhas: list[str], passada: str) -> None:
@@ -156,7 +230,11 @@ def passada_do_salvamento_automatico(binario: str, falhas: list[str]) -> None:
         original = montar_livro(pasta)
         app = App(binario, pasta)
         try:
-            if app.esperar_linha("salvo:") is None:
+            # O roteiro termina (linha "foco:") antes de o salvamento
+            # automático disparar, 1,5 s depois de digitar.
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 1: a interface não chegou ao fim do roteiro")
+            elif app.esperar_linha("salvo:") is None:
                 falhas.append("passada 1: o app não chegou a salvar")
         finally:
             app.encerrar()
@@ -175,6 +253,56 @@ def passada_do_salvamento_automatico(binario: str, falhas: list[str]) -> None:
         )
         rolagem = app.linha_com("rolagem:").removeprefix("[interface] rolagem: área ").replace("px", "").split(" de ")
         exigir(len(rolagem) == 2 and int(rolagem[0]) < int(rolagem[1]), f"o editor não rola por dentro: {rolagem}")
+
+        # A lateral e a barra de status: título, arquivo e palavras do capítulo
+        # aberto, antes e depois de digitar, contra a conta feita aqui.
+        do_capitulo = contar_palavras(original.decode())
+        do_livro = do_capitulo + contar_palavras(SEGUNDO_CAPITULO.decode())
+        for quando, a_mais in (("antes", 0), ("depois", PALAVRAS_DA_FRASE)):
+            linha = app.linha_com(f"contagem {quando}:")
+            achado = re.search(
+                r'capítulo="Capítulo: ([\d.]+) palavras" livro="Livro: ([\d.]+) palavras" '
+                r'resumo="2 capítulos · ([\d.]+) palavras" item="Capítulo um \| ([\d.]+) \| 01-abertura.md"',
+                linha,
+            )
+            exigir(achado is not None, f"contagem {quando}: {linha!r}")
+            if achado is not None:
+                visto = [inteiro(numero) for numero in achado.groups()]
+                esperado = [do_capitulo + a_mais, do_livro + a_mais, do_livro + a_mais, do_capitulo + a_mais]
+                exigir(visto == esperado, f"contagem {quando}: na tela {visto}, esperado {esperado}")
+
+        tema = app.linha_com("tema:")
+        papel, tinta = claridade(tema, "papel"), claridade(tema, "tinta")
+        exigir("tema: claro" in tema and 'botão="Tema: claro"' in tema, f"tema: {tema!r}")
+        exigir(papel is not None and tinta is not None and papel > tinta, f"no tema claro o papel é mais claro que a tinta: {tema!r}")
+
+        realce = app.linha_com("realce:")
+        tamanhos = re.search(r"título=([\d.]+)px corpo=([\d.]+)px", realce)
+        exigir("ênfase=italic" in realce and "forte=700" in realce, f"realce: {realce!r}")
+        exigir(
+            tamanhos is not None and float(tamanhos.group(1)) > float(tamanhos.group(2)),
+            f"o título não ficou maior que o corpo: {realce!r}",
+        )
+        # O analisador do editor segue o CommonMark e vê um título no `#`
+        # colado ao parágrafo; a tela tem de mostrá-lo como o Pandoc: texto.
+        colado = re.search(r"texto=([\d.]+)px corpo=([\d.]+)px", app.linha_com("título colado:"))
+        exigir(
+            colado is not None and colado.group(1) == colado.group(2),
+            f"o título colado no parágrafo ficou com tamanho de título: {app.linha_com('título colado:')!r}",
+        )
+        sinal = claridade(realce, "sinal")
+        exigir(
+            sinal is not None and tinta is not None and sinal > tinta,
+            f"o sinal do Markdown não ficou mais apagado que a tinta: {realce!r} / {tema!r}",
+        )
+
+        foco = app.linha_com("foco:")
+        exigir(
+            "foco: desligado" in foco
+            and all(f"{parte}=flex" in foco for parte in ("lateral", "barra", "status"))
+            and "sair-do-foco=none" in foco,
+            f"foco: {foco!r}",
+        )
         conferir_disco(pasta, original, falhas, "passada 1")
 
 
@@ -227,13 +355,8 @@ def passada_de_exportar(binario: str, captura: str | None, falhas: list[str]) ->
             if app.esperar_linha("exportado:") is None:
                 falhas.append("passada 3: o app não chegou a exportar")
                 return
-            if captura:
-                # Depois de exportar a janela mostra o aviso de livro exportado.
-                time.sleep(1)
-                if FORA_DA_TELA:
-                    print("  " + capturar_o_display_virtual(captura))
-                elif TEM_HYPRLAND:
-                    print("  " + capturar(app.processo.pid, captura))
+            # Depois de exportar a janela mostra o aviso de livro exportado.
+            capturar_se_pedido(app, captura, "")
         finally:
             app.encerrar()
         conferir_disco(pasta, original, falhas, "passada 3")
@@ -255,6 +378,95 @@ def passada_de_exportar(binario: str, captura: str | None, falhas: list[str]) ->
             falhas.append("passada 3: o corpo não saiu justificado como manda o estilo.yaml")
         if "0 avisos" not in app.linha_com("exportado:"):
             falhas.append(f"passada 3: {app.linha_com('exportado:')!r}")
+
+
+def capturar_se_pedido(app: "App", captura: str | None, sufixo: str) -> None:
+    if not captura:
+        return
+    destino = pathlib.Path(captura)
+    destino = destino.with_name(f"{destino.stem}{sufixo}{destino.suffix}")
+    time.sleep(1)
+    if FORA_DA_TELA:
+        print("  " + capturar_o_display_virtual(str(destino)))
+    elif TEM_HYPRLAND:
+        print("  " + capturar(app.processo.pid, str(destino)))
+
+
+def passada_do_tema_escuro(binario: str, captura: str | None, falhas: list[str]) -> None:
+    print("passada 4: tema escuro")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
+        pasta = pathlib.Path(temporaria)
+        montar_livro(pasta)
+        app = App(binario, pasta, tema="escuro")
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 4: a interface não chegou ao fim do roteiro")
+                return
+            capturar_se_pedido(app, captura, "-escuro")
+        finally:
+            app.encerrar()
+        tema = app.linha_com("tema:")
+        mesa, papel, tinta = (claridade(tema, nome) for nome in ("mesa", "papel", "tinta"))
+        if "tema: escuro" not in tema or 'botão="Tema: escuro"' not in tema:
+            falhas.append(f"passada 4: {tema!r}")
+        if mesa is None or papel is None or tinta is None or not (mesa < papel < tinta):
+            falhas.append(f"passada 4: no tema escuro a mesa é mais escura que o papel, e o papel que a tinta: {tema!r}")
+
+
+def passada_do_modo_foco(binario: str, captura: str | None, falhas: list[str]) -> None:
+    print("passada 5: modo foco")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
+        pasta = pathlib.Path(temporaria)
+        montar_livro(pasta, ESTILO_COM_FONTE_AUSENTE)
+        app = App(binario, pasta, foco=True)
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 5: a interface não chegou ao fim do roteiro")
+                return
+            capturar_se_pedido(app, captura, "-foco")
+        finally:
+            app.encerrar()
+        foco = app.linha_com("foco:")
+        if "foco: ligado" not in foco or any(f"{parte}=none" not in foco for parte in ("lateral", "barra", "status")):
+            falhas.append(f"passada 5: a lateral e as barras não sumiram: {foco!r}")
+        # O aviso da fonte que falta continua na tela, e há como sair do foco.
+        if "avisos=none" in foco or "sair-do-foco=none" in foco:
+            falhas.append(f"passada 5: o aviso ou o botão de sair do foco não estão na tela: {foco!r}")
+
+
+def passada_da_escolha_de_tema(binario: str, falhas: list[str]) -> None:
+    print("passada 6: a escolha de tema fica guardada")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria, tempfile.TemporaryDirectory(
+        prefix="md-novel-dados-"
+    ) as dados:
+        pasta = pathlib.Path(temporaria)
+        montar_livro(pasta)
+        # Primeira janela: dois cliques no botão (sistema, claro, escuro) e
+        # fecha em seguida, como o autor fecharia.
+        app = App(binario, pasta, tema=None, cliques_no_tema=2, fechar=True, dados=pathlib.Path(dados))
+        try:
+            if app.esperar_linha("digitado pelo roteiro de teste") is None:
+                falhas.append("passada 6: a primeira janela não chegou ao fim do roteiro")
+                return
+            try:
+                app.processo.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                falhas.append("passada 6: a primeira janela não fechou")
+                return
+        finally:
+            app.encerrar()
+        if 'tema: escuro; botão="Tema: escuro"' not in app.linha_com("tema:"):
+            falhas.append(f"passada 6: os dois cliques não levaram ao tema escuro: {app.linha_com('tema:')!r}")
+        # Segunda janela, na mesma pasta de dados e sem tema no roteiro.
+        app = App(binario, pasta, tema=None, dados=pathlib.Path(dados))
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 6: a segunda janela não chegou ao fim do roteiro")
+                return
+        finally:
+            app.encerrar()
+        if 'tema: escuro; botão="Tema: escuro"' not in app.linha_com("tema:"):
+            falhas.append(f"passada 6: a escolha não ficou guardada: {app.linha_com('tema:')!r}")
 
 
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
@@ -294,6 +506,9 @@ def principal() -> int:
     passada_do_salvamento_automatico(binario, falhas)
     passada_de_fechar_a_janela(binario, falhas)
     passada_de_exportar(binario, captura, falhas)
+    passada_do_tema_escuro(binario, captura, falhas)
+    passada_do_modo_foco(binario, captura, falhas)
+    passada_da_escolha_de_tema(binario, falhas)
     for falha in falhas:
         print(f"FALHOU: {falha}")
     print("teste funcional:", "reprovado" if falhas else "aprovado")

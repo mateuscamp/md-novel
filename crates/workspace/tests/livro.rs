@@ -337,3 +337,39 @@ fn estilo_do_livro_e_lido_quando_existe_e_tem_teto_de_tamanho() {
         "veio {erro}"
     );
 }
+
+#[test]
+fn resumos_trazem_titulo_e_palavras_de_cada_capitulo_na_ordem() {
+    let pasta = pasta_com(&[
+        (
+            "02-a-casa.md",
+            "# A casa\n\nEla abria as janelas.\n".as_bytes(),
+        ),
+        ("01-abertura.md", b"Sem titulo, cinco palavras aqui.\n"),
+        ("03-quebrado.md", b"Cora\xE7\xE3o\n"),
+    ]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+
+    let resumos = livro.resumos().expect("resumos");
+
+    let visto: Vec<(&str, Option<&str>, Option<usize>)> = resumos
+        .iter()
+        .map(|resumo| {
+            (
+                resumo.nome.as_str(),
+                resumo.titulo.as_deref(),
+                resumo.palavras,
+            )
+        })
+        .collect();
+    assert_eq!(
+        visto,
+        [
+            ("01-abertura.md", None, Some(5)),
+            ("02-a-casa.md", Some("A casa"), Some(6)),
+            // Capítulo que não dá para ler continua na lista, sem números:
+            // o erro aparece quando o autor tenta abri-lo.
+            ("03-quebrado.md", None, None),
+        ]
+    );
+}

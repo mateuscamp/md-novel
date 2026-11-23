@@ -67,12 +67,31 @@ test("fechamento sem abertura é linha comum, e bloco não fechado vai até o fi
   assert.deepEqual(estilos('::: {custom-style="Carta"}\na\nb'), [null, "Carta", "Carta"]);
 });
 
-test("título é a linha que começa com um a seis # e um espaço", () => {
-  const marcas = marcarLinhas(["# Capítulo um", "###### Seis", "####### Sete", "#semespaço", "texto # não é", "#"]);
+// Até 2026-11-23 este teste dizia "um a seis #" e dava `####### Sete` como
+// texto: era a regra do CommonMark. Quem escreve o .docx é o Pandoc, que
+// aceita mais de seis (`pandoc -t native` dá `Header 7`), e a regra passou a
+// ser a dele, a mesma de `tituloDoTexto`.
+test("título é a linha que começa com # e um espaço, como no Pandoc", () => {
+  const marcas = marcarLinhas(["# Capítulo um", "###### Seis", "####### Sete", "#semespaço", "texto # não é"]);
   assert.deepEqual(
     marcas.map((marca) => marca.titulo),
-    [true, true, false, false, false, false],
+    [true, true, true, false, false],
   );
+  assert.deepEqual(
+    marcarLinhas(["#", "   # recuado"]).map((marca) => marca.titulo),
+    [true, false],
+  );
+});
+
+test("título colado num parágrafo é texto do parágrafo, como no Pandoc", () => {
+  const titulos = (texto: string) => marcarLinhas(texto.split("\n")).map((marca) => marca.titulo);
+  assert.deepEqual(titulos("texto\n# Colado\n\n# Depois"), [false, false, false, true]);
+  // Depois de outro título, de um bloco `:::` ou de uma cerca de código, vale.
+  assert.deepEqual(titulos("# Um\n## Dois"), [true, true]);
+  assert.deepEqual(titulos("::: {.a}\n# Dentro\ntexto\n:::\n# Depois"), [false, true, false, false, true]);
+  assert.deepEqual(titulos("```\ncódigo\n```\n# Depois"), [false, false, false, true]);
+  // Um `:::` solto é texto: o título colado nele não vale.
+  assert.deepEqual(titulos(":::\n# Colado no solto"), [false, false]);
 });
 
 test("texto vazio dá uma marca por linha", () => {
