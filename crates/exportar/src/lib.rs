@@ -23,7 +23,7 @@ pub enum ErroExportar {
     #[error("o pandoc falhou (código {codigo}): {stderr}")]
     PandocFalhou { codigo: String, stderr: String },
 
-    #[error("o pandoc terminou sem erro mas não gravou o .docx; o arquivo anterior foi mantido")]
+    #[error("o pandoc terminou sem erro mas não gravou o .docx; nada foi alterado no destino")]
     PandocNaoGravou,
 
     #[error("nenhum capítulo para exportar; esperado ao menos um arquivo .md")]

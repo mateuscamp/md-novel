@@ -314,16 +314,13 @@ fn pandoc_de_verdade() -> PathBuf {
         .expect("pandoc no PATH")
 }
 
+/// Roda `exportar` com um pandoc falso no PATH: ele entrega o modelo de
+/// verdade e, na conversão, sai com 0 sem escrever nada. O falso fica fora da
+/// pasta do livro para não entrar na listagem dela.
 #[cfg(unix)]
-#[test]
-fn pandoc_que_termina_bem_sem_gravar_nao_apaga_o_docx_anterior() {
+fn exportar_com_pandoc_que_nao_grava(pasta: &Path) -> Output {
     use std::os::unix::fs::PermissionsExt;
 
-    let (pasta, _) = pasta_com_romance();
-    fs::write(pasta.path().join("cap1.md"), "# Um\n\nTexto.\n").expect("cap1");
-    fs::write(pasta.path().join("livro.docx"), "VERSAO ANTERIOR").expect("docx anterior");
-    // Um pandoc falso que entrega o modelo e, na conversão, sai com 0 sem
-    // escrever nada. Fica fora da pasta do livro para não entrar na listagem.
     let falsos = tempfile::tempdir().expect("pasta do pandoc falso");
     let falso = falsos.path().join("pandoc");
     let roteiro = format!(
@@ -332,8 +329,7 @@ fn pandoc_que_termina_bem_sem_gravar_nao_apaga_o_docx_anterior() {
     );
     fs::write(&falso, roteiro).expect("gravar o pandoc falso");
     fs::set_permissions(&falso, fs::Permissions::from_mode(0o755)).expect("tornar executável");
-
-    let saida = Command::new(env!("CARGO_BIN_EXE_md-novel"))
+    Command::new(env!("CARGO_BIN_EXE_md-novel"))
         .args([
             "exportar",
             "--estilo",
@@ -342,10 +338,20 @@ fn pandoc_que_termina_bem_sem_gravar_nao_apaga_o_docx_anterior() {
             "livro.docx",
             "cap1.md",
         ])
-        .current_dir(pasta.path())
+        .current_dir(pasta)
         .env("PATH", falsos.path())
         .output()
-        .expect("rodar o binário md-novel");
+        .expect("rodar o binário md-novel")
+}
+
+#[cfg(unix)]
+#[test]
+fn pandoc_que_termina_bem_sem_gravar_nao_apaga_o_docx_anterior() {
+    let (pasta, _) = pasta_com_romance();
+    fs::write(pasta.path().join("cap1.md"), "# Um\n\nTexto.\n").expect("cap1");
+    fs::write(pasta.path().join("livro.docx"), "VERSAO ANTERIOR").expect("docx anterior");
+
+    let saida = exportar_com_pandoc_que_nao_grava(pasta.path());
 
     assert_eq!(saida.status.code(), Some(1), "saída vazia é erro");
     let stderr = String::from_utf8_lossy(&saida.stderr);
@@ -358,4 +364,25 @@ fn pandoc_que_termina_bem_sem_gravar_nao_apaga_o_docx_anterior() {
         nomes_na_pasta(pasta.path()),
         ["cap1.md", "estilo.yaml", "livro.docx"]
     );
+}
+
+// Regressão da quarta revisão de 2026-11-23: a mensagem falava em "arquivo
+// anterior" mesmo quando não havia nenhum.
+#[cfg(unix)]
+#[test]
+fn na_primeira_exportacao_o_erro_nao_cita_arquivo_anterior() {
+    let (pasta, _) = pasta_com_romance();
+    fs::write(pasta.path().join("cap1.md"), "# Um\n\nTexto.\n").expect("cap1");
+
+    let saida = exportar_com_pandoc_que_nao_grava(pasta.path());
+
+    assert_eq!(saida.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&saida.stderr);
+    assert!(stderr.contains("não gravou"), "{stderr}");
+    assert!(
+        !stderr.contains("anterior"),
+        "não havia arquivo anterior: {stderr}"
+    );
+    assert!(stderr.contains("nada foi alterado no destino"), "{stderr}");
+    assert_eq!(nomes_na_pasta(pasta.path()), ["cap1.md", "estilo.yaml"]);
 }
