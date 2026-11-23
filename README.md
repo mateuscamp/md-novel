@@ -6,10 +6,13 @@ tamanho, entrelinha, alinhamento, recuo e espaços. Desse arquivo saem o CSS do
 editor e o `reference.docx` do Pandoc, de modo que a tela e o .docx recebem as
 mesmas propriedades.
 
-**Estado:** ferramenta de linha de comando. O editor próprio ainda não existe;
-enquanto isso, o CSS gerado serve no Zettlr.
+**Estado:** há um programa de desktop na primeira versão (abre a pasta do
+livro, edita com a tipografia do `estilo.yaml` e salva) e uma linha de comando,
+que gera o CSS, o reference.docx e exporta o .docx.
 
-## Instalação
+![A janela do md-novel com um capítulo aberto](docs/imagens/app-linux.png)
+
+## Instalação da linha de comando
 
 Precisa do Rust (pelo [rustup](https://rustup.rs)) e do Pandoc 3 (testado com
 o 3.11).
@@ -39,7 +42,43 @@ cargo install --locked --path crates/cli
 
 O comando `md-novel` fica em `~/.cargo/bin`.
 
-## Uso
+## O programa de desktop
+
+Além do Rust e do Pandoc, precisa do Node 22, do `cargo tauri`
+(`cargo install tauri-cli --version "^2" --locked`) e, no Linux, do WebKitGTK
+(`sudo pacman -S webkit2gtk-4.1` no Arch).
+
+```bash
+cd app && npm ci --ignore-scripts && cargo tauri build --no-bundle
+```
+
+O programa fica em `target/release/md-novel-app`. Abra passando a pasta do
+livro, ou sem nada e use "Abrir pasta…":
+
+```bash
+./target/release/md-novel-app ~/Dropbox/meu-livro
+```
+
+O que ele faz hoje:
+
+- Os capítulos são os arquivos `.md` da pasta, em ordem de nome. Nada é
+  criado nem mudado na pasta ao abrir.
+- O texto aparece com a tipografia do `estilo.yaml` da pasta, inclusive os
+  estilos nomeados dos blocos `:::`. Sem `estilo.yaml`, ou com ele inválido,
+  o programa avisa e abre os capítulos assim mesmo.
+- Salva sozinho um instante depois de você parar de digitar, ao trocar de
+  capítulo e ao sair da janela (e com Ctrl+S). O arquivo volta ao disco no
+  formato em que estava.
+- Se o arquivo mudou no disco depois que você abriu (outro computador pelo
+  Dropbox, outro editor), ele não grava por cima: avisa e oferece recarregar.
+- Avisa quando a fonte do estilo não está instalada.
+
+O que ainda não faz: exportar pelo programa (use a linha de comando abaixo),
+ordenar capítulos fora da ordem de nome, esconder a linha em branco entre
+parágrafos, dar aos títulos a cara do .docx e perceber sozinho, com o
+programa aberto, que um arquivo mudou. Não há instalador.
+
+## Uso da linha de comando
 
 Copie [`exemplos/estilo.yaml`](exemplos/estilo.yaml) para a pasta do livro e
 ajuste. Cada chave está comentada no próprio arquivo.
@@ -87,7 +126,7 @@ na lista de estilos do Word.
 
 Gere de novo e cole de novo sempre que mudar o `estilo.yaml`.
 
-No Zettlr há limites que o editor próprio vai resolver:
+No Zettlr há limites que o programa de desktop já resolve em parte:
 
 - Os estilos nomeados não aparecem na tela, só no .docx: o Zettlr não marca os
   blocos `:::`.
@@ -116,6 +155,7 @@ No Zettlr há limites que o editor próprio vai resolver:
 make check
 ```
 
-Formata, roda o clippy e a suíte inteira; precisa do `pandoc` no PATH. O CI
-roda o mesmo comando no Linux e no Mac M1. Regras do repositório em
+Confere a interface (tipos, testes, build) e depois formata, roda o clippy e
+a suíte inteira do Rust; precisa do `pandoc` no PATH, do Node e, no Linux, do
+`webkit2gtk-4.1`. O CI roda o mesmo comando no Linux e no Mac arm64. Regras do repositório em
 [AGENTS.md](AGENTS.md), decisões em [docs/adr](docs/adr/README.md).

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "A janela só chama os comandos do próprio app. A escolha da pasta é feita no Rust; a página não recebe permissão de diálogo nem de arquivos.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

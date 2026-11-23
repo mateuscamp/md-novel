@@ -3,8 +3,6 @@
 //! A conversão é só de ida, de .md para .docx (ADR 0001): aqui não entra
 //! leitura de .docx.
 
-mod saida;
-
 use std::ffi::OsString;
 use std::fs;
 use std::io::{ErrorKind, Write};
@@ -13,7 +11,7 @@ use std::process::{Command, Stdio};
 
 use thiserror::Error;
 
-pub use saida::SaidaPendente;
+use workspace::{ErroWorkspace, SaidaPendente};
 
 #[derive(Debug, Error)]
 pub enum ErroExportar {
@@ -29,16 +27,6 @@ pub enum ErroExportar {
     #[error("nenhum capítulo para exportar; esperado ao menos um arquivo .md")]
     SemCapitulos,
 
-    #[error(
-        "o caminho de saída {recebido:?} não serve: precisa ser um arquivo, ou um link para um arquivo que exista, e não uma pasta"
-    )]
-    SaidaInvalida { recebido: PathBuf },
-
-    #[error(
-        "a saída {recebido:?} precisa terminar em .{esperada}; assim nenhum comando sobrescreve um capítulo"
-    )]
-    ExtensaoErrada { recebido: PathBuf, esperada: String },
-
     #[error("não achei o capítulo {recebido:?}; confira o nome e a pasta")]
     CapituloInexistente { recebido: PathBuf },
 
@@ -47,8 +35,10 @@ pub enum ErroExportar {
     )]
     CapituloNaoEArquivo { recebido: PathBuf },
 
-    #[error("a pasta {recebido:?} não existe; crie a pasta antes de gravar nela")]
-    PastaInexistente { recebido: PathBuf },
+    /// Problema com o destino do .docx (extensão, pasta, link): a mensagem
+    /// é a do crate `workspace`, que é quem grava.
+    #[error(transparent)]
+    Saida(#[from] ErroWorkspace),
 
     #[error("erro de leitura ou escrita: {0}")]
     Io(#[from] std::io::Error),
@@ -248,7 +238,10 @@ mod tests {
             let erro = exportar_docx(std::slice::from_ref(&capitulo), b"", &saida)
                 .expect_err("saída recusada");
             assert!(
-                matches!(erro, ErroExportar::ExtensaoErrada { .. }),
+                matches!(
+                    erro,
+                    ErroExportar::Saida(ErroWorkspace::ExtensaoErrada { .. })
+                ),
                 "{}: veio {erro}",
                 saida.display()
             );

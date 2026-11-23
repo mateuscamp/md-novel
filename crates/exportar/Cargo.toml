@@ -9,6 +9,7 @@ description = "Único lugar que chama o Pandoc."
 [dependencies]
 thiserror.workspace = true
 tempfile.workspace = true
+workspace.workspace = true
 
 [dev-dependencies]
 estilo.workspace = true

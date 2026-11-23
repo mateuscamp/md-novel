@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>md-novel</title>
+    <link rel="stylesheet" href="/src/app.css" />
+  </head>
+  <body>
+    <aside id="lateral">
+      <header>
+        <h1 id="nome-do-livro">md-novel</h1>
+        <button id="abrir-pasta" type="button">Abrir pasta…</button>
+      </header>
+      <ul id="capitulos"></ul>
+    </aside>
+    <main>
+      <div id="barra">
+        <span id="nome-do-capitulo"></span>
+        <span id="estado" role="status"></span>
+        <button id="salvar" type="button" disabled>Salvar</button>
+      </div>
+      <div id="avisos"></div>
+      <div id="mesa">
+        <p id="vazio">Abra a pasta onde ficam os capítulos do livro.</p>
+        <div id="folha" hidden></div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
