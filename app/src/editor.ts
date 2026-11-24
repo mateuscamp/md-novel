@@ -5,7 +5,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { defineLanguageFacet, Language, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { findNext, openSearchPanel, SearchQuery, search, searchKeymap, setSearchQuery } from "@codemirror/search";
 import { EditorState, type Extension, type RangeSet, RangeSetBuilder, RangeValue, StateField } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { Decoration, type DecorationSet, drawSelection, EditorView, keymap } from "@codemirror/view";
 import { tagHighlighter, tags } from "@lezer/highlight";
 import { parser, Strikethrough } from "@lezer/markdown";
 import { marcarLinhas } from "./blocos.ts";
@@ -26,6 +26,8 @@ export interface Editor {
   posicao(): number;
   /** Leva o cursor para `posicao` (ou para o fim, se o texto é mais curto) e mostra a linha. */
   irPara(posicao: number): void;
+  /** Quantas trocas o `converterSinais` faria agora, sem fazer nenhuma. */
+  sinaisAConverter(): number;
   /** Troca no texto inteiro os hifens duplos por travessão e as aspas retas
    *  por curvas, e diz quantas trocas fez. */
   converterSinais(): number;
@@ -162,6 +164,11 @@ export function criarEditor(
   };
   const extensoes: Extension = [
     EditorView.lineWrapping,
+    // O cursor e a seleção desenhados pelo editor, não os do navegador. O
+    // cursor do navegador ocupa a linha inteira, e com entrelinha de 1,5 fica
+    // bem mais alto que a letra; o desenhado tem a altura da letra, como no
+    // Word (pedido do autor, 2026-11-24).
+    drawSelection(),
     history(),
     keymap.of([
       { key: "Mod-s", preventDefault: true, run: () => (aoSalvar(), true) },
@@ -247,6 +254,7 @@ export function criarEditor(
         effects: EditorView.scrollIntoView(destino, { y: "center" }),
       });
     },
+    sinaisAConverter: () => converter(view.state.doc.toString()).mudancas.length,
     converterSinais: () => {
       const { mudancas } = converter(view.state.doc.toString());
       if (mudancas.length === 0) return 0;

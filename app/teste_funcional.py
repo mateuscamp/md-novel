@@ -46,7 +46,8 @@ Catorze passadas:
     estilo; um valor que o Word não guarda fica só no aviso do painel.
 14. parágrafos como no Word: a linha em branco entre dois parágrafos não
     ocupa espaço, Enter cria parágrafo (com a linha em branco no arquivo),
-    Backspace junta, e o botão converte `\\--` e aspas retas, com desfazer.
+    Backspace junta, o app oferece converter `\\--` e aspas retas ao abrir o
+    capítulo, e o botão da barra de baixo converte, com desfazer.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -279,6 +280,14 @@ def conferir_disco(pasta: pathlib.Path, original: bytes, falhas: list[str], pass
         falhas.append(f"{passada}: arquivos na pasta do livro: {sobras}")
 
 
+def conferir_cursor(app: "App", falhas: list[str], passada: str) -> None:
+    """O cursor tem a altura da letra (com folga para acento e perna), não a
+    da linha inteira, que com entrelinha de 1,5 é bem maior."""
+    medida = re.search(r"cursor: altura=(\d+)px letra=([\d.]+)px linha=([\d.]+)px", app.linha_com("cursor:"))
+    if medida is None or not 0 < int(medida[1]) <= float(medida[2]) * 1.4 or not int(medida[1]) < float(medida[3]):
+        falhas.append(f"{passada}: o cursor tem a altura da linha, não a da letra: {app.linha_com('cursor:')!r}")
+
+
 def passada_do_salvamento_automatico(binario: str, falhas: list[str]) -> None:
     print("passada 1: salvamento automático")
     with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
@@ -359,6 +368,7 @@ def passada_do_salvamento_automatico(binario: str, falhas: list[str]) -> None:
             and "sair-do-foco=none" in foco,
             f"foco: {foco!r}",
         )
+        conferir_cursor(app, falhas, "passada 1")
         conferir_disco(pasta, original, falhas, "passada 1")
 
 
@@ -869,6 +879,9 @@ def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
     with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
         pasta = pathlib.Path(temporaria)
         montar_livro(pasta)
+        # Uma fala como outros programas gravam, já no arquivo ao abrir.
+        with (pasta / "01-abertura.md").open("ab") as capitulo:
+            capitulo.write(b'\\-- "Oi", disse.\r\n\r\n')
         app = App(binario, pasta, paragrafos=True)
         try:
             if app.esperar_linha("foco:") is None:
@@ -876,6 +889,12 @@ def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
                 return
         finally:
             app.encerrar()
+        oferta = app.linha_com("oferta:")
+        if (
+            "Este capítulo tem 3 sinais escritos à moda antiga" not in oferta
+            or 'botão="Converter" antes=true depois=true some=true' not in oferta
+        ):
+            falhas.append(f"passada 14: o app não ofereceu a conversão ao abrir, ou o botão não converteu: {oferta!r}")
         medida = re.search(r"separadoras=(\d+) altura=(\S+) vão=(-?\d+)px", app.linha_com("parágrafos: separadoras"))
         # A linha em branco some, e um parágrafo encosta no outro.
         if medida is None or int(medida[1]) < 3 or medida[2] != "0" or abs(int(medida[3])) > 1:

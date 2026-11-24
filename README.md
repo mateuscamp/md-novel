@@ -103,11 +103,12 @@ O que ele faz hoje:
   sair, e os sinais que você digitou (`*`, `#`) continuam na tela, apagados.
 - Tema claro e escuro. O botão "Tema" passa por sistema, claro e escuro, e a
   escolha fica guardada. O tema é só da janela: não muda o .docx.
-- Modo foco (botão "Foco" ou F8): fica só a folha. Esc ou F8 sai. Os avisos
+- Modo foco (o botão dos quatro cantos, ou F8): fica só a folha. Esc ou F8 sai. Os avisos
   continuam aparecendo.
 - Zoom do texto com Ctrl+rolagem, Ctrl+= e Ctrl+- (Ctrl+0 volta a 100%): a
   folha aproxima, a lateral e as barras ficam do mesmo tamanho.
-  O botão ☰, ou F9, esconde a lateral. "Máquina", ou F10, liga a máquina de
+  O primeiro botão da barra de cima, ou F9, esconde a lateral. O de três
+  linhas, ou F10, liga a máquina de
   escrever: a linha em que você escreve fica no meio da tela. F11 é tela
   cheia. Zoom, lateral e máquina de escrever ficam guardados.
 - Corretor ortográfico em português: palavra errada ganha o sublinhado
@@ -125,9 +126,10 @@ O que ele faz hoje:
   que o Markdown pede entre eles fica no arquivo, mas não aparece na tela.
   Backspace no começo de um parágrafo junta com o de cima; Shift+Enter é a
   quebra de linha simples.
-- "Converter sinais", na barra de baixo, troca de uma vez, no capítulo
-  aberto, os hifens duplos (`--` e `\--`) por travessão e as aspas retas por
-  curvas. Ctrl+Z desfaz.
+- Ao abrir um capítulo com hifens duplos (`--` e `\--`) ou aspas retas, um
+  aviso oferece trocá-los por travessão e aspas curvas, no botão
+  "Converter". O mesmo comando fica em "Converter sinais", na barra de
+  baixo. Ctrl+Z desfaz.
 - Aspas curvas e travessão ao digitar: `"` vira “ ”, `'` vira ‘ ’ e `--` vira
   —. O botão "Aspas" da barra de baixo desliga. Nas linhas `:::`, em código
   e em links o sinal fica reto.

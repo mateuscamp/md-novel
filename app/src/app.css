@@ -118,9 +118,13 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 /* O botão ligado (máquina de escrever) fica marcado. */
 #acoes button[aria-pressed="true"] { background: var(--destaque-fundo); border-color: var(--destaque); }
 #alternar-lateral {
-  flex: none; padding: 3px 9px; border: 1px solid var(--borda); border-radius: 6px;
-  background: transparent; cursor: pointer; font-size: 15px; line-height: 1.2;
+  flex: none; padding: 6px 8px; border: 1px solid var(--borda); border-radius: 6px;
+  background: transparent; cursor: pointer;
 }
+/* Os botões de símbolo (lateral, máquina de escrever, foco): o desenho é um
+   SVG na própria página, na cor do texto do tema. */
+#alternar-lateral svg, #acoes button svg { display: block; width: 16px; height: 16px; }
+#acoes button:has(svg) { padding: 6px 8px; }
 #alternar-lateral:hover { background: var(--realce); }
 /* A lateral escondida pelo autor (F9). O modo foco esconde por conta própria. */
 :root[data-lateral="escondida"] #lateral { display: none; }
@@ -150,7 +154,9 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #status span:empty { display: none; }
 /* Com o painel de estilo aberto a barra aperta: nada quebra em duas linhas. */
 #status > * { white-space: nowrap; }
-#status { overflow: hidden; }
+/* O que não cabe desce para uma segunda linha: esconder cortaria os botões
+   do fim da barra (converter, aspas, zoom) numa janela estreita. */
+#status { flex-wrap: wrap; row-gap: 2px; }
 #estado { margin-left: auto; }
 #estado.erro { color: var(--erro-tinta); font-weight: 600; }
 #zoom, #aspas, #hoje, #converter { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
@@ -180,7 +186,11 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   background: var(--papel); color: var(--tinta); caret-color: var(--tinta);
   border-radius: 2px; box-shadow: var(--sombra);
 }
-#folha .cm-line::selection, #folha .cm-line ::selection { background: var(--selecao); }
+/* O cursor e a seleção são desenhados pelo editor (`drawSelection`): o
+   cursor tem a altura da letra, não a da linha. */
+#folha .cm-cursor, #folha .cm-dropCursor { border-left: 1.5px solid var(--tinta); }
+#folha .cm-selectionBackground,
+#folha .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: var(--selecao); }
 
 /* Padrão sem estilo.yaml. O CSS do livro usa `.cm-content .cm-line`, que é
    mais específico e vence este. */

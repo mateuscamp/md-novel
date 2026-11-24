@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { converter, substituicao } from "./tipografia.ts";
+import { converter, ofertaDeConversao, substituicao } from "./tipografia.ts";
 
 /** O que fica escrito depois de digitar `tecla` com `antes` na linha. */
 function digitar(antes: string, tecla: string): string {
@@ -125,4 +125,16 @@ test("converter diz o que trocou, e o texto já convertido não muda de novo", (
   }
   assert.equal(refeito, texto);
   assert.deepEqual(converter(texto), { texto, mudancas: [] });
+});
+
+test("a oferta de conversão diz quantos sinais há, e some quando não há nenhum", () => {
+  assert.equal(ofertaDeConversao(0), null);
+  assert.equal(
+    ofertaDeConversao(1),
+    "Este capítulo tem 1 sinal escrito à moda antiga: hífen duplo no lugar do travessão, ou aspa reta. Quer trocar?",
+  );
+  assert.equal(
+    ofertaDeConversao(1234),
+    "Este capítulo tem 1.234 sinais escritos à moda antiga: hifens duplos no lugar do travessão, ou aspas retas. Quer trocar?",
+  );
 });

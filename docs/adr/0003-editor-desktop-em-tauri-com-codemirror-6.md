@@ -445,6 +445,19 @@ entre os parágrafos", que era a linha em branco do Markdown.
   arquivo.
 - **Custo aceito:** quem quer ver cada linha do arquivo não vê mais a linha
   em branco, e não há botão para voltar a mostrá-la.
+- **O app oferece a conversão ao abrir o capítulo** (acrescentado no mesmo
+  dia): o autor não achou o botão no fim da barra de baixo. Um aviso no alto
+  diz quantos sinais há e traz o botão "Converter". Só oferece; quem
+  converte continua sendo o autor.
+- **Lateral, máquina de escrever e foco são botões de símbolo**, a pedido
+  do autor, desenhados em SVG na própria página para não depender de a
+  fonte do sistema ter o caractere. Cada um tem nome para leitor de tela e
+  a dica com a tecla. `app/src/moldura.test.ts` confere.
+- **O cursor e a seleção são desenhados pelo editor** (`drawSelection`),
+  não pelo navegador. O cursor do navegador ocupa a altura inteira da
+  linha, e com entrelinha de 1,5 o autor o achou "muito grande"; o
+  desenhado tem a altura da letra, como no Word. O custo é um ciclo de
+  desenho a mais por mudança, que o CodeMirror documenta.
 
 ## Governança
 
@@ -469,8 +482,9 @@ entre os parágrafos", que era a linha em branco do Markdown.
 | Regras do formulário | `app/src/painel.test.ts` | `make check` | o estilo nomeado não herda do texto do livro, uma propriedade do estilo fica sem campo no painel, ou uma medida não vai e volta |
 | O painel na janela de verdade | `app/teste_funcional.py`, passada 13 | à mão, fora do CI | a mudança no painel não aparece no texto na hora, não chega ao `estilo.yaml`, o estilo nomeado não herda, criar ou apagar estilo falha, ou o valor inválido é gravado |
 | Linha separadora e Enter de parágrafo | `app/src/blocos.test.ts` e `app/src/paragrafo.test.ts` | `make check` | uma linha em branco de bloco de código, do fim do capítulo ou repetida é escondida, ou o Enter abre linha em branco em lista, citação, tabela ou linha `:::` |
-| Converter sinais | `app/src/tipografia.test.ts` (`converter`) | `make check` | um sinal é trocado em código, linha `:::`, tabela, quebra de cena, cabeçalho YAML, comentário ou link, ou as trocas não refazem o texto |
-| Parágrafos na janela de verdade | `app/teste_funcional.py`, passada 14 | à mão, fora do CI | a linha em branco entre parágrafos ocupa espaço, Enter não grava a linha em branco, Backspace não junta os parágrafos, ou converter e desfazer não dão o texto esperado |
+| Converter sinais | `app/src/tipografia.test.ts` (`converter`, `ofertaDeConversao`) | `make check` | um sinal é trocado em código, linha `:::`, tabela, quebra de cena, cabeçalho YAML, comentário ou link, ou as trocas não refazem o texto |
+| Parágrafos na janela de verdade | `app/teste_funcional.py`, passada 14 | à mão, fora do CI | a linha em branco entre parágrafos ocupa espaço, Enter não grava a linha em branco, Backspace não junta os parágrafos, converter e desfazer não dão o texto esperado, ou o capítulo com `\\--` abre sem a oferta de converter |
+| O cursor tem a altura da letra | `app/teste_funcional.py`, passada 1 (`conferir_cursor`) | à mão, fora do CI | o cursor passa de 1,4 vez o tamanho da letra, ou tem a altura da linha inteira |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |
