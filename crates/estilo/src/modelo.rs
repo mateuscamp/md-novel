@@ -287,6 +287,227 @@ impl Estilo {
     }
 }
 
+/// As propriedades de um parágrafo como um formulário as edita (o painel
+/// "Estilo" do app): todas presentes, com as medidas escritas como no
+/// `estilo.yaml` (`12pt`, `1.25cm`). Não é validado aqui: quem valida é
+/// [`Estilo::de_campos`], pelo mesmo caminho do arquivo.
+///
+/// Tem as mesmas chaves de [`EstiloParagrafo`]; `tests/painel.rs` confere.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Campos {
+    pub fonte: String,
+    pub tamanho: String,
+    pub entrelinha: f64,
+    pub alinhamento: String,
+    pub recuo_primeira_linha: String,
+    pub espaco_antes: String,
+    pub espaco_depois: String,
+    pub italico: bool,
+    pub negrito: bool,
+}
+
+impl From<&EstiloParagrafo> for Campos {
+    fn from(paragrafo: &EstiloParagrafo) -> Self {
+        // Sem `..`: propriedade nova quebra a compilação aqui até entrar no formulário.
+        let EstiloParagrafo {
+            fonte,
+            tamanho,
+            entrelinha,
+            alinhamento,
+            recuo_primeira_linha,
+            espaco_antes,
+            espaco_depois,
+            italico,
+            negrito,
+        } = paragrafo;
+        let alinhamento = match alinhamento {
+            Alinhamento::Esquerda => "esquerda",
+            Alinhamento::Centro => "centro",
+            Alinhamento::Direita => "direita",
+            Alinhamento::Justificado => "justificado",
+        };
+        Campos {
+            fonte: fonte.nome().to_owned(),
+            tamanho: tamanho.medida().to_string(),
+            entrelinha: entrelinha.multiplo(),
+            alinhamento: alinhamento.to_owned(),
+            recuo_primeira_linha: recuo_primeira_linha.to_string(),
+            espaco_antes: espaco_antes.to_string(),
+            espaco_depois: espaco_depois.to_string(),
+            italico: *italico,
+            negrito: *negrito,
+        }
+    }
+}
+
+/// As propriedades que um estilo nomeado troca em relação ao corpo, como um
+/// formulário as edita. O que falta aqui é herdado: mudar o corpo muda o
+/// estilo nomeado junto, como num estilo "baseado em" do Word.
+///
+/// Tem as mesmas chaves de [`EstiloParagrafo`]; `tests/painel.rs` confere.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields, default)]
+pub struct CamposTrocados {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fonte: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tamanho: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entrelinha: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alinhamento: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recuo_primeira_linha: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub espaco_antes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub espaco_depois: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub italico: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub negrito: Option<bool>,
+}
+
+impl CamposTrocados {
+    /// O que `paragrafo` tem de diferente de `corpo`.
+    pub fn entre(paragrafo: &EstiloParagrafo, corpo: &EstiloParagrafo) -> Self {
+        // Sem `..`: propriedade nova quebra a compilação aqui até entrar no formulário.
+        let Campos {
+            fonte,
+            tamanho,
+            entrelinha,
+            alinhamento,
+            recuo_primeira_linha,
+            espaco_antes,
+            espaco_depois,
+            italico,
+            negrito,
+        } = Campos::from(paragrafo);
+        let base = Campos::from(corpo);
+        CamposTrocados {
+            fonte: (fonte != base.fonte).then_some(fonte),
+            tamanho: (tamanho != base.tamanho).then_some(tamanho),
+            entrelinha: (entrelinha != base.entrelinha).then_some(entrelinha),
+            alinhamento: (alinhamento != base.alinhamento).then_some(alinhamento),
+            recuo_primeira_linha: (recuo_primeira_linha != base.recuo_primeira_linha)
+                .then_some(recuo_primeira_linha),
+            espaco_antes: (espaco_antes != base.espaco_antes).then_some(espaco_antes),
+            espaco_depois: (espaco_depois != base.espaco_depois).then_some(espaco_depois),
+            italico: (italico != base.italico).then_some(italico),
+            negrito: (negrito != base.negrito).then_some(negrito),
+        }
+    }
+}
+
+/// O que um estilo nomeado tem de diferente do corpo: é só isso que vai para
+/// o arquivo, para ele continuar herdando o resto.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct Diferencas<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fonte: Option<&'a Fonte>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tamanho: Option<TamanhoFonte>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    entrelinha: Option<Entrelinha>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alinhamento: Option<Alinhamento>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recuo_primeira_linha: Option<Medida>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    espaco_antes: Option<Medida>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    espaco_depois: Option<Medida>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    italico: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    negrito: Option<bool>,
+}
+
+fn diferencas<'a>(paragrafo: &'a EstiloParagrafo, corpo: &EstiloParagrafo) -> Diferencas<'a> {
+    // Sem `..`: propriedade nova quebra a compilação aqui até ser escrita.
+    let EstiloParagrafo {
+        fonte,
+        tamanho,
+        entrelinha,
+        alinhamento,
+        recuo_primeira_linha,
+        espaco_antes,
+        espaco_depois,
+        italico,
+        negrito,
+    } = paragrafo;
+    Diferencas {
+        fonte: (*fonte != corpo.fonte).then_some(fonte),
+        tamanho: (*tamanho != corpo.tamanho).then_some(*tamanho),
+        entrelinha: (*entrelinha != corpo.entrelinha).then_some(*entrelinha),
+        alinhamento: (*alinhamento != corpo.alinhamento).then_some(*alinhamento),
+        recuo_primeira_linha: (*recuo_primeira_linha != corpo.recuo_primeira_linha)
+            .then_some(*recuo_primeira_linha),
+        espaco_antes: (*espaco_antes != corpo.espaco_antes).then_some(*espaco_antes),
+        espaco_depois: (*espaco_depois != corpo.espaco_depois).then_some(*espaco_depois),
+        italico: (*italico != corpo.italico).then_some(*italico),
+        negrito: (*negrito != corpo.negrito).then_some(*negrito),
+    }
+}
+
+/// O começo do `estilo.yaml` que o programa grava. Os comentários de quem
+/// editou à mão não sobrevivem a uma gravação, e o arquivo diz isso.
+const CABECALHO: &str = "# Estilo do livro no md Novel: a fonte, o tamanho, a entrelinha, o\n\
+# alinhamento, o recuo e os espaços do texto. O painel \"Estilo\" do programa\n\
+# grava este arquivo. Editar à mão também vale, mas comentários escritos aqui\n\
+# não são guardados quando o painel grava de novo.\n";
+
+impl Estilo {
+    /// O texto do `estilo.yaml` deste estilo: o corpo inteiro, e de cada
+    /// estilo nomeado só o que difere do corpo. Ler o texto de volta dá o
+    /// mesmo estilo.
+    pub fn para_yaml(&self) -> Result<String, ErroEstilo> {
+        #[derive(Serialize)]
+        struct Escrito<'a> {
+            versao: u32,
+            corpo: &'a EstiloParagrafo,
+            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+            estilos: BTreeMap<&'a str, Diferencas<'a>>,
+        }
+        let escrito = Escrito {
+            versao: VERSAO_SUPORTADA,
+            corpo: &self.corpo,
+            estilos: self
+                .estilos
+                .iter()
+                .map(|(nome, paragrafo)| (nome.as_str(), diferencas(paragrafo, &self.corpo)))
+                .collect(),
+        };
+        Ok(format!(
+            "{CABECALHO}{}",
+            serde_yaml_ng::to_string(&escrito)?
+        ))
+    }
+
+    /// O estilo que um formulário descreve. Os campos passam pela mesma
+    /// validação do arquivo: viram o texto de um `estilo.yaml` e são lidos
+    /// por [`Estilo::de_yaml`].
+    pub fn de_campos(
+        corpo: Campos,
+        estilos: BTreeMap<String, CamposTrocados>,
+    ) -> Result<Estilo, ErroEstilo> {
+        #[derive(Serialize)]
+        struct Formulario {
+            versao: u32,
+            corpo: Campos,
+            estilos: BTreeMap<String, CamposTrocados>,
+        }
+        let texto = serde_yaml_ng::to_string(&Formulario {
+            versao: VERSAO_SUPORTADA,
+            corpo,
+            estilos,
+        })?;
+        Estilo::de_yaml(&texto)
+    }
+}
+
 #[derive(Deserialize)]
 struct SoVersao {
     versao: u32,

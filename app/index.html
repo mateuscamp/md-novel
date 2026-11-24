@@ -29,6 +29,7 @@
           <span id="arquivo-do-capitulo"></span>
         </div>
         <div id="acoes">
+          <button id="abrir-estilo" type="button" title="Fonte, tamanho, entrelinha, alinhamento e recuo do texto" aria-pressed="false">Estilo</button>
           <button id="tema" type="button" title="Trocar o tema: do sistema, claro ou escuro">Tema: sistema</button>
           <button id="maquina" type="button" title="Máquina de escrever: a linha em que você escreve fica no meio da tela (F10)" aria-pressed="false">Máquina</button>
           <button id="foco" type="button" title="Modo foco: só a folha na tela (F8). Tela cheia: F11">Foco</button>
@@ -55,6 +56,62 @@
         <button id="zoom" type="button" title="Zoom do texto: Ctrl+rolagem, Ctrl+= e Ctrl+-. Clique aqui ou Ctrl+0 para voltar a 100%">100%</button>
       </footer>
     </main>
+    <aside id="painel-do-estilo" aria-label="Estilo do livro" hidden>
+      <header>
+        <h2>Estilo</h2>
+        <button id="fechar-o-painel" type="button" title="Fechar o painel" aria-label="Fechar o painel de estilo">×</button>
+      </header>
+      <div class="campo">
+        <label for="estilo-escolhido">Parágrafo</label>
+        <select id="estilo-escolhido"></select>
+      </div>
+      <div class="acoes-do-estilo">
+        <button id="novo-estilo" type="button" title="Um estilo com nome, para epígrafe, carta, placa">Novo estilo…</button>
+        <button id="apagar-estilo" type="button">Apagar este</button>
+      </div>
+      <input id="nome-do-estilo-novo" type="text" placeholder="nome, como Epígrafe" aria-label="Nome do estilo novo" title="Enter cria o estilo; Esc desiste" hidden />
+      <div class="campo" data-campo="fonte">
+        <label for="campo-fonte">Fonte</label>
+        <input id="campo-fonte" type="text" list="fontes-sugeridas" />
+        <datalist id="fontes-sugeridas"></datalist>
+      </div>
+      <div class="campo" data-campo="tamanho">
+        <label for="campo-tamanho">Tamanho</label>
+        <span class="medida"><input id="campo-tamanho" type="number" min="1" step="0.5" /><span id="unidade-tamanho"></span></span>
+      </div>
+      <div class="campo" data-campo="entrelinha">
+        <label for="campo-entrelinha">Entrelinha</label>
+        <span class="medida"><input id="campo-entrelinha" type="number" min="0.5" step="0.05" /><span>linhas</span></span>
+      </div>
+      <div class="campo" data-campo="alinhamento">
+        <span class="rotulo-do-campo" id="rotulo-alinhamento">Alinhamento</span>
+        <div id="campo-alinhamento" role="radiogroup" aria-labelledby="rotulo-alinhamento">
+          <button type="button" role="radio" data-alinhamento="esquerda" title="À esquerda">Esq.</button>
+          <button type="button" role="radio" data-alinhamento="centro" title="Centralizado">Centro</button>
+          <button type="button" role="radio" data-alinhamento="direita" title="À direita">Dir.</button>
+          <button type="button" role="radio" data-alinhamento="justificado" title="Justificado">Just.</button>
+        </div>
+      </div>
+      <div class="campo" data-campo="recuo-primeira-linha">
+        <label for="campo-recuo">Recuo da primeira linha</label>
+        <span class="medida"><input id="campo-recuo" type="number" min="0" step="0.25" /><span id="unidade-recuo"></span></span>
+      </div>
+      <div class="campo" data-campo="espaco-antes">
+        <label for="campo-antes">Espaço antes do parágrafo</label>
+        <span class="medida"><input id="campo-antes" type="number" min="0" step="1" /><span id="unidade-antes"></span></span>
+      </div>
+      <div class="campo" data-campo="espaco-depois">
+        <label for="campo-depois">Espaço depois do parágrafo</label>
+        <span class="medida"><input id="campo-depois" type="number" min="0" step="1" /><span id="unidade-depois"></span></span>
+      </div>
+      <div class="campo marcas">
+        <label data-campo="italico"><input id="campo-italico" type="checkbox" /> Itálico</label>
+        <label data-campo="negrito"><input id="campo-negrito" type="checkbox" /> Negrito</label>
+      </div>
+      <p id="erro-do-estilo" role="alert" hidden></p>
+      <p id="estado-do-estilo" role="status"></p>
+      <p id="dica-do-estilo"></p>
+    </aside>
     <button id="sair-do-foco" type="button" title="Sair do modo foco (Esc ou F8)" hidden>Sair do foco</button>
     <script type="module" src="/src/main.ts"></script>
   </body>

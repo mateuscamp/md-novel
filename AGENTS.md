@@ -18,13 +18,13 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São doze passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São treze passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
   guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
   máquina de escrever), a escrita (aspas, travessão, busca), a sessão
-  (reabrir onde parou, meta do dia), o capítulo novo e o corretor
-  ortográfico, que precisa do `hunspell-pt-br` instalado. `--passada=N` roda
-  uma só. Ele abre o app num
+  (reabrir onde parou, meta do dia), o capítulo novo, o corretor
+  ortográfico, que precisa do `hunspell-pt-br` instalado, e o painel de
+  estilo. `--passada=N` roda uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -65,8 +65,9 @@ comando. ADRs em `docs/adr/`.
 - TDD: escreva o teste, rode, veja falhar na asserção, só então o código. Cole
   o vermelho no relatório. Checagem de arquitetura nova precisa ser vista
   reprovar com o código quebrado de propósito.
-- Propriedade nova de estilo = campo em `EstiloParagrafo` e `Parcial` +
-  tradução em `css.rs` e `docx.rs` + linha na tabela de
+- Propriedade nova de estilo = campo em `EstiloParagrafo`, `Parcial`,
+  `Campos`, `CamposTrocados` e `Diferencas` + campo no painel de estilo
+  (`index.html`, `painel.ts`, `main.ts`) + tradução em `css.rs` e `docx.rs` + linha na tabela de
   `toda_chave_do_schema_sai_no_css_e_no_docx` + goldens, no mesmo commit. Sem
   equivalente no Word ou no CSS: rejeitar, nunca ignorar (ADR 0002).
 - Não desestruture `EstiloParagrafo` nem `Parcial` com `..`, e não use `_ =>`
@@ -74,9 +75,11 @@ comando. ADRs em `docs/adr/`.
 - O manuscrito é o ativo. Toda gravação passa por `workspace::SaidaPendente`
   (temporário na pasta de destino + rename). Arquivo gerado só termina em
   `.docx` ou `.css`. O `estilo.yaml` só é gravado por
-  `workspace::Livro::criar_estilo`: a pedido do autor (o botão do aviso), a
-  partir do `exemplos/estilo.yaml` embutido, e nunca por cima de um que já
-  existe, nem de um link. Capítulo (`.md`) só nasce por
+  `workspace::Livro::criar_estilo` (o botão do aviso: o modelo embutido,
+  nunca por cima de um que já existe, nem de um link) e por
+  `workspace::Livro::gravar_estilo` (o painel de estilo: recusa se o arquivo
+  mudou no disco desde que o painel o leu). O texto vem sempre de
+  `Estilo::para_yaml`; a página manda valores de campo, nunca YAML. Capítulo (`.md`) só nasce por
   `workspace::Livro::criar_capitulo`, vazio e nunca por cima de outro, e só é gravado por
   `workspace::Capitulo::salvar`, que recusa se o arquivo mudou no disco desde
   a leitura e não escreve se o texto é o mesmo. Comando com mais de uma

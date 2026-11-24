@@ -18,7 +18,7 @@ use tauri_plugin_dialog::DialogExt;
 use workspace::Gravacao;
 
 use crate::exportacao::ExportacaoFeita;
-use crate::sessao::{CapituloCriado, ErroDeComando, LivroAberto, Sessao};
+use crate::sessao::{CapituloCriado, ErroDeComando, EstiloNoPainel, LivroAberto, Sessao};
 
 #[derive(Default)]
 struct Estado {
@@ -59,6 +59,23 @@ fn livro_atual(estado: State<'_, Estado>) -> Result<Option<LivroAberto>, ErroDeC
 #[tauri::command(async)]
 fn criar_estilo(estado: State<'_, Estado>) -> Result<LivroAberto, ErroDeComando> {
     estado.sessao().criar_estilo()
+}
+
+/// O estilo do livro para o painel "Estilo" mostrar. Só lê.
+#[tauri::command(async)]
+fn estilo_para_editar(estado: State<'_, Estado>) -> Result<EstiloNoPainel, ErroDeComando> {
+    estado.sessao().estilo_para_editar()
+}
+
+/// Grava o estilo que o painel mostra. A página manda os valores dos campos,
+/// nunca um caminho nem o texto do arquivo: quem valida e escreve o
+/// `estilo.yaml` é o Rust.
+#[tauri::command(async)]
+fn salvar_estilo(
+    painel: EstiloNoPainel,
+    estado: State<'_, Estado>,
+) -> Result<LivroAberto, ErroDeComando> {
+    estado.sessao().salvar_estilo(painel)
 }
 
 /// Cria um capítulo vazio no livro aberto. A página manda o nome que o autor
@@ -290,6 +307,8 @@ struct RoteiroDeTeste {
     capitulo_novo: bool,
     /// Digitar palavras erradas, com pausas para a captura da tela.
     corretor: bool,
+    /// Mudar o estilo pelo painel.
+    painel_de_estilo: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -314,6 +333,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         sessao: std::env::var_os("MD_NOVEL_TESTE_SESSAO").is_some(),
         capitulo_novo: std::env::var_os("MD_NOVEL_TESTE_CAPITULO_NOVO").is_some(),
         corretor: std::env::var_os("MD_NOVEL_TESTE_CORRETOR").is_some(),
+        painel_de_estilo: std::env::var_os("MD_NOVEL_TESTE_PAINEL_DE_ESTILO").is_some(),
     })
 }
 
@@ -376,6 +396,8 @@ fn main() {
             livro_atual,
             escolher_pasta,
             criar_estilo,
+            estilo_para_editar,
+            salvar_estilo,
             criar_capitulo,
             estado_do_corretor,
             alternar_tela_cheia,

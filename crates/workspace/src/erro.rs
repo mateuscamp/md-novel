@@ -56,6 +56,11 @@ pub enum ErroWorkspace {
     )]
     NomeDeCapituloInvalido { recebido: String },
 
+    #[error(
+        "o estilo.yaml em {caminho:?} mudou no disco depois que o painel de estilo o leu (outro programa ou a sincronização); nada foi gravado. Feche e abra o painel de estilo para ver o que está lá agora"
+    )]
+    EstiloMudouPorFora { caminho: PathBuf },
+
     #[error("erro de leitura ou escrita: {0}")]
     Io(#[from] std::io::Error),
 }

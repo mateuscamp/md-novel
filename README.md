@@ -84,7 +84,11 @@ O que ele faz hoje:
   o programa avisa e abre os capítulos assim mesmo. Na pasta sem estilo o
   aviso traz o botão "Criar estilo.yaml", que grava ali o modelo comentado
   (o mesmo de `exemplos/estilo.yaml`); um estilo que já existe nunca é
-  trocado. Para ajustar, edite o arquivo e abra o programa de novo.
+  trocado.
+- O botão "Estilo" abre um painel para mudar a fonte, o tamanho, a
+  entrelinha, o alinhamento, o recuo e os espaços, do texto do livro e dos
+  estilos nomeados. A mudança aparece na hora e vai para o `estilo.yaml`.
+  Comentários escritos à mão no arquivo não são guardados pelo painel.
 - Salva sozinho um instante depois de você parar de digitar, ao trocar de
   capítulo e ao sair da janela (e com Ctrl+S). O arquivo volta ao disco no
   formato em que estava.
