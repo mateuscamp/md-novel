@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 description = "Compila estilo.yaml em CSS do editor e no reference.docx do Pandoc. Rust puro, sem processo externo."
 
 [dependencies]

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 description = "A pasta do livro: listar e ler capítulos e toda gravação em disco. Rust puro, sem tauri e sem processo externo."
 
 [dependencies]
