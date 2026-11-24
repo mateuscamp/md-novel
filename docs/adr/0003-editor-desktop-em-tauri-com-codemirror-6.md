@@ -340,6 +340,25 @@ Terceira parte das facilidades pedidas pelo autor.
   da gravação deixa lá um arquivo de bytes. E capítulos que chegam por fora
   (a sincronização) contam como escritos hoje.
 
+## Capítulo novo pelo app (2026-11-24)
+
+O autor pediu para criar capítulo sem sair do programa.
+
+- **"Novo capítulo…" na lateral abre um campo com a sugestão do próximo
+  número** (`02-a-casa.md` sugere `03-`); Enter cria um arquivo `.md` vazio
+  na pasta do livro e abre nele. O capítulo aberto é salvo antes.
+- **É a primeira vez que a página manda um nome que não veio da lista do
+  livro.** Só o nome, nunca um caminho, e quem confere é o `workspace`:
+  sem barra, sem `..`, sem começar com ponto, sem os caracteres que o
+  Windows de quem sincroniza a pasta recusa, até 100 caracteres. O `.md`
+  entra sozinho.
+- **O que já existe nunca é trocado**, pela mesma troca que recusa
+  sobrescrever usada no `estilo.yaml`.
+- **Nasce vazio.** O app não escreve título nem modelo: o que entra no
+  manuscrito é do autor.
+- **Fica de fora:** renomear, apagar e reordenar capítulos. Continuam sendo
+  feitos na pasta, e a ordem continua sendo a do nome.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -354,6 +373,8 @@ Terceira parte das facilidades pedidas pelo autor.
 | O último livro | testes de `app/src-tauri/src/memoria.rs` | `make check` | um registro estragado, relativo, grande demais ou de pasta que sumiu abre alguma coisa, ou sobra temporário na pasta de dados |
 | Onde parou e a conta de hoje | `app/src/onde.test.ts` e `app/src/meta.test.ts` | `make check` | um capítulo que sumiu é reaberto, o dia vira e a conta não recomeça, ou uma meta fora da faixa é aceita |
 | A sessão na janela de verdade | `app/teste_funcional.py`, passada 10 | à mão, fora do CI | aberto sem pasta, o app não volta ao último livro, ao capítulo e ao cursor, a conta de hoje ou a meta se perdem, ou aparece arquivo na pasta do livro |
+| Capítulo novo não sai da pasta nem sobrescreve | `crates/workspace/tests/livro.rs` (`criar_capitulo_*`, `nome_de_capitulo_*`) | `make check` | um nome com barra, `..`, ponto no começo ou caractere reservado é aceito, um capítulo que existe é trocado, ou aparece arquivo fora da pasta do livro |
+| Capítulo novo na janela de verdade | `app/teste_funcional.py`, passada 11 | à mão, fora do CI | o botão não sugere o próximo número, o capítulo não é criado vazio, listado e aberto, o texto do capítulo anterior não é salvo antes, ou o nome repetido é aceito |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |

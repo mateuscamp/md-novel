@@ -15,6 +15,42 @@ const BOM: &[u8] = b"\xEF\xBB\xBF";
 /// Um romance inteiro em texto não chega a 2 MiB. O teto evita carregar
 /// para a memória e para a interface um arquivo que não é capítulo.
 const TAMANHO_MAXIMO_DO_CAPITULO: u64 = 16 * 1024 * 1024;
+/// O maior nome de capítulo, em caracteres, sem contar o `.md`.
+const TAMANHO_MAXIMO_DO_NOME: usize = 100;
+/// O que um nome de arquivo não pode ter em algum dos sistemas por onde a
+/// pasta do livro passa: a barra daqui e os reservados do Windows de quem
+/// recebe a pasta pela sincronização.
+const PROIBIDOS_NO_NOME: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
+/// O nome do arquivo de um capítulo novo: o que o autor digitou, sem espaços
+/// em volta e com `.md` no fim (digitado ou não).
+fn nome_de_capitulo(nome: &str) -> Result<String, ErroWorkspace> {
+    let aparado = nome.trim();
+    let base = aparado
+        .len()
+        .checked_sub(".md".len())
+        .filter(|corte| {
+            aparado.is_char_boundary(*corte) && aparado[*corte..].eq_ignore_ascii_case(".md")
+        })
+        .map_or(aparado, |corte| &aparado[..corte]);
+    // Ponto no começo é arquivo escondido (e o `..` que sai da pasta); ponto
+    // ou espaço no fim o Windows corta.
+    let serve = !base.is_empty()
+        && !base.starts_with('.')
+        && !base.ends_with('.')
+        && !base.ends_with(' ')
+        && base.chars().count() <= TAMANHO_MAXIMO_DO_NOME
+        && !base
+            .chars()
+            .any(|letra| letra.is_control() || PROIBIDOS_NO_NOME.contains(&letra));
+    if !serve {
+        return Err(ErroWorkspace::NomeDeCapituloInvalido {
+            recebido: nome.to_owned(),
+        });
+    }
+    Ok(format!("{base}.md"))
+}
+
 /// Um estilo.yaml escrito à mão tem menos de 10 kB.
 const TAMANHO_MAXIMO_DO_ESTILO: u64 = 1024 * 1024;
 
@@ -138,6 +174,22 @@ impl Livro {
         // Se o arquivo apareceu depois da conferência acima, é aqui que a
         // gravação é recusada.
         saida.publicar_sem_sobrescrever()
+    }
+
+    /// Cria um capítulo vazio com o nome que o autor deu e devolve o nome do
+    /// arquivo (com `.md`). O nome é o único dado que vem de fora da lista
+    /// do livro, e por isso é conferido aqui: precisa ser um nome de arquivo
+    /// simples, dentro da pasta. O que já existe nunca é trocado (ADR 0003).
+    pub fn criar_capitulo(&self, nome: &str) -> Result<String, ErroWorkspace> {
+        let arquivo = nome_de_capitulo(nome)?;
+        let destino = self.pasta.join(&arquivo);
+        // Como no estilo: qualquer coisa com esse nome, até um link quebrado,
+        // já conta como existir.
+        if fs::symlink_metadata(&destino).is_ok() {
+            return Err(ErroWorkspace::JaExiste { recebido: destino });
+        }
+        SaidaPendente::preparar(&destino, "md")?.publicar_sem_sobrescrever()?;
+        Ok(arquivo)
     }
 
     /// O texto do `estilo.yaml`, ou `None` se o livro ainda não tem um.

@@ -47,6 +47,13 @@ pub struct ErroDeComando {
     pub mensagem: String,
 }
 
+/// O capítulo que o autor acabou de criar, e o livro relido com ele na lista.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct CapituloCriado {
+    pub nome: String,
+    pub livro: LivroAberto,
+}
+
 /// O estilo que o botão "Criar estilo.yaml" grava: o exemplo comentado do
 /// projeto, embutido no programa. É um arquivo só, para o exemplo que o
 /// README manda copiar e o que o app cria nunca divergirem.
@@ -84,6 +91,19 @@ impl Sessao {
         };
         livro.criar_estilo(MODELO_DE_ESTILO)?;
         montar(livro)
+    }
+
+    /// Cria um capítulo vazio no livro aberto. O nome vem do autor e é
+    /// conferido no `workspace`; a página não manda caminho.
+    pub fn criar_capitulo(&self, nome: &str) -> Result<CapituloCriado, ErroDeComando> {
+        let Some(livro) = &self.livro else {
+            return Err(erro("abra a pasta do livro antes de criar um capítulo"));
+        };
+        let nome = livro.criar_capitulo(nome)?;
+        Ok(CapituloCriado {
+            nome,
+            livro: montar(livro)?,
+        })
     }
 
     /// Lê o capítulo do disco e passa a acompanhá-lo. Abrir de novo relê:
@@ -427,6 +447,36 @@ estilos:
             fs::read_to_string(pasta.path().join("estilo.yaml")).expect("ler"),
             ESTILO
         );
+    }
+
+    #[test]
+    fn criar_capitulo_devolve_o_nome_do_arquivo_e_o_livro_com_ele_na_lista() {
+        let pasta = pasta_com(&[("01.md", "um")]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+
+        let criado = sessao.criar_capitulo("02-a-casa").expect("criar");
+
+        assert_eq!(criado.nome, "02-a-casa.md");
+        assert_eq!(nomes(&criado.livro), ["01.md", "02-a-casa.md"]);
+        assert_eq!(criado.livro.capitulos[1].palavras, Some(0));
+        assert_eq!(
+            fs::read(pasta.path().join("02-a-casa.md")).expect("ler"),
+            b""
+        );
+        // O capítulo novo abre e salva como os outros.
+        assert_eq!(sessao.abrir_capitulo("02-a-casa.md").expect("abrir"), "");
+        sessao
+            .salvar_capitulo("02-a-casa.md", "# A casa\n")
+            .expect("salvar");
+
+        let erro = sessao.criar_capitulo("../fora").expect_err("sai da pasta");
+        assert_eq!(erro.codigo, "erro");
+        assert!(erro.mensagem.contains("../fora"), "{erro:?}");
+        let sem_livro = Sessao::default()
+            .criar_capitulo("03")
+            .expect_err("sem livro");
+        assert!(sem_livro.mensagem.contains("pasta"), "{sem_livro:?}");
     }
 
     #[test]

@@ -18,11 +18,12 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São dez passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São onze passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
   guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
-  máquina de escrever), a escrita (aspas, travessão, busca) e a sessão
-  (reabrir onde parou, meta do dia). `--passada=N` roda uma só. Ele abre o app num
+  máquina de escrever), a escrita (aspas, travessão, busca), a sessão
+  (reabrir onde parou, meta do dia) e o capítulo novo. `--passada=N` roda
+  uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -45,7 +46,7 @@ comando. ADRs em `docs/adr/`.
 | `crates/workspace` | a pasta do livro: listar e ler capítulos, contar palavras e achar o título, e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve arquivo. |
 | `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. Grava pelo `workspace`. |
 | `crates/cli` | adaptador fino | Lê argumentos, chama os crates. Sem regra de estilo. |
-| `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho: a pasta vem do seletor do sistema ou da linha de comando, e capítulo só pelo nome da lista. |
+| `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho: a pasta vem do seletor do sistema ou da linha de comando, e capítulo só pelo nome da lista. A exceção é o nome de um capítulo novo, que o autor digita e o `workspace` confere (`Livro::criar_capitulo`). |
 | `app/linux` | o instalador do menu de aplicativos (`instalar.sh`, shell POSIX) | Só o `make instalar` e o `make desinstalar` chamam. Escreve três arquivos dentro do `PREFIXO` e mais nenhum, cada um por temporário + rename, os três preparados antes de publicar o primeiro. Nunca toca a pasta do livro. É a única gravação fora do `workspace`. |
 | `app/src` | a interface (TypeScript, CodeMirror 6) | Recebe o CSS pronto do Rust e não define tipografia do texto. O que o `estilo.yaml` ainda não cobre (títulos, marcadores `:::`) fica em `app.css`, com comentário dizendo isso. Regra testável vai em função pura com teste (`*.test.ts`). O tema e a moldura (`app.css`) não mudam a tipografia do texto. Dependência nova entra na lista de `fronteira.test.ts`, com o motivo no ADR 0003. |
 
@@ -74,7 +75,8 @@ comando. ADRs em `docs/adr/`.
   `.docx` ou `.css`. O `estilo.yaml` só é gravado por
   `workspace::Livro::criar_estilo`: a pedido do autor (o botão do aviso), a
   partir do `exemplos/estilo.yaml` embutido, e nunca por cima de um que já
-  existe, nem de um link. Capítulo (`.md`) só é gravado por
+  existe, nem de um link. Capítulo (`.md`) só nasce por
+  `workspace::Livro::criar_capitulo`, vazio e nunca por cima de outro, e só é gravado por
   `workspace::Capitulo::salvar`, que recusa se o arquivo mudou no disco desde
   a leitura e não escreve se o texto é o mesmo. Comando com mais de uma
   saída prepara todas antes de publicar a primeira. A exceção é o

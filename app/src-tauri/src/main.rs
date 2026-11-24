@@ -16,7 +16,7 @@ use tauri_plugin_dialog::DialogExt;
 use workspace::Gravacao;
 
 use crate::exportacao::ExportacaoFeita;
-use crate::sessao::{ErroDeComando, LivroAberto, Sessao};
+use crate::sessao::{CapituloCriado, ErroDeComando, LivroAberto, Sessao};
 
 #[derive(Default)]
 struct Estado {
@@ -46,6 +46,16 @@ fn livro_atual(estado: State<'_, Estado>) -> Result<Option<LivroAberto>, ErroDeC
 #[tauri::command(async)]
 fn criar_estilo(estado: State<'_, Estado>) -> Result<LivroAberto, ErroDeComando> {
     estado.sessao().criar_estilo()
+}
+
+/// Cria um capítulo vazio no livro aberto. A página manda o nome que o autor
+/// digitou, e só o nome: quem confere que ele não sai da pasta é o `workspace`.
+#[tauri::command(async)]
+fn criar_capitulo(
+    nome: String,
+    estado: State<'_, Estado>,
+) -> Result<CapituloCriado, ErroDeComando> {
+    estado.sessao().criar_capitulo(&nome)
 }
 
 /// Zoom da janela inteira, como o de um navegador. A página manda só o por
@@ -213,6 +223,8 @@ struct RoteiroDeTeste {
     escrita: bool,
     /// Definir a meta do dia, trocar de capítulo e mover o cursor.
     sessao: bool,
+    /// Criar um capítulo pelo botão da lateral.
+    capitulo_novo: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -235,6 +247,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         conforto: std::env::var_os("MD_NOVEL_TESTE_CONFORTO").is_some(),
         escrita: std::env::var_os("MD_NOVEL_TESTE_ESCRITA").is_some(),
         sessao: std::env::var_os("MD_NOVEL_TESTE_SESSAO").is_some(),
+        capitulo_novo: std::env::var_os("MD_NOVEL_TESTE_CAPITULO_NOVO").is_some(),
     })
 }
 
@@ -296,6 +309,7 @@ fn main() {
             livro_atual,
             escolher_pasta,
             criar_estilo,
+            criar_capitulo,
             definir_zoom,
             alternar_tela_cheia,
             abrir_capitulo,
