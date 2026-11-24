@@ -65,6 +65,14 @@ pub struct CapituloCriado {
     pub livro: LivroAberto,
 }
 
+/// O livro renomeado, e o caminho que ele tinha: o app troca o que lembra
+/// daquela pasta (a lista de livros, onde o autor parou) para a nova.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct LivroRenomeado {
+    pub antes: String,
+    pub livro: LivroAberto,
+}
+
 /// O estilo que o botão "Criar estilo.yaml" grava: o exemplo comentado do
 /// projeto, embutido no programa. É um arquivo só, para o exemplo que o
 /// README manda copiar e o que o app cria nunca divergirem.
@@ -190,6 +198,58 @@ impl Sessao {
         let texto = capitulo.texto().to_owned();
         self.capitulos.insert(nome.to_owned(), capitulo);
         Ok(texto)
+    }
+
+    /// Troca o nome da pasta do livro aberto (ADR 0003, "Vários livros").
+    /// Os capítulos lidos eram do caminho velho: são esquecidos, e a página
+    /// reabre o que estava na tela, depois de ter salvo o que faltava.
+    pub fn renomear_livro(&mut self, nome: &str) -> Result<LivroRenomeado, ErroDeComando> {
+        let Some(livro) = &self.livro else {
+            return Err(erro("abra a pasta do livro antes de renomeá-lo"));
+        };
+        let antes = livro.pasta().display().to_string();
+        let renomeado = livro.renomear(nome)?;
+        let aberto = montar(&renomeado)?;
+        self.livro = Some(renomeado);
+        self.capitulos.clear();
+        self.estilo_lido = None;
+        Ok(LivroRenomeado {
+            antes,
+            livro: aberto,
+        })
+    }
+
+    /// Troca o nome do arquivo de um capítulo. Se ele estava aberto, o nome
+    /// antigo deixa de valer: a página reabre pelo novo.
+    pub fn renomear_capitulo(
+        &mut self,
+        atual: &str,
+        novo: &str,
+    ) -> Result<CapituloCriado, ErroDeComando> {
+        let Some(livro) = &self.livro else {
+            return Err(erro("abra a pasta do livro antes de renomear um capítulo"));
+        };
+        let nome = livro.renomear_capitulo(atual, novo)?;
+        let aberto = montar(livro)?;
+        if nome != atual {
+            self.capitulos.remove(atual);
+        }
+        Ok(CapituloCriado {
+            nome,
+            livro: aberto,
+        })
+    }
+
+    /// Cria a pasta de um livro novo, vazia, em `onde` (que veio do seletor
+    /// do sistema), e abre nela.
+    pub fn criar_livro(&mut self, onde: &Path, nome: &str) -> Result<LivroAberto, ErroDeComando> {
+        let criado = workspace::criar_livro(onde, nome)?;
+        self.abrir_pasta(criado.pasta())
+    }
+
+    /// A pasta do livro aberto, se há um.
+    pub fn pasta(&self) -> Option<&Path> {
+        self.livro.as_ref().map(Livro::pasta)
     }
 
     /// O que exportar agora: os capítulos em ordem e o estilo, relidos da pasta.
@@ -825,5 +885,104 @@ estilos:
             fs::read_to_string(segundo.path().join("01.md")).expect("reler"),
             "Outro livro.\n"
         );
+    }
+
+    // Renomear e criar livro (ADR 0003, "Vários livros").
+
+    #[test]
+    fn renomear_o_livro_aberto_muda_a_pasta_e_o_capitulo_reaberto_salva_no_lugar_novo() {
+        let base = pasta_com(&[]);
+        let pasta = base.path().join("livro");
+        fs::create_dir(&pasta).expect("criar livro");
+        fs::write(pasta.join("01.md"), "# Um\n").expect("criar capítulo");
+        let mut sessao = Sessao::default();
+        let aberto = sessao.abrir_pasta(&pasta).expect("abrir");
+        sessao.abrir_capitulo("01.md").expect("abrir capítulo");
+
+        let renomeado = sessao.renomear_livro("O livro").expect("renomear");
+        let nova = base.path().canonicalize().expect("real").join("O livro");
+        assert_eq!(renomeado.antes, aberto.pasta);
+        assert_eq!(renomeado.livro.nome, "O livro");
+        assert_eq!(renomeado.livro.pasta, nova.display().to_string());
+        assert_eq!(nomes(&renomeado.livro), ["01.md"]);
+        assert!(!pasta.exists(), "a pasta antiga não existe mais");
+        assert_eq!(
+            sessao
+                .livro_atual()
+                .expect("atual")
+                .map(|livro| livro.pasta),
+            Some(nova.display().to_string())
+        );
+
+        // O capítulo lido antes era do caminho velho: precisa ser reaberto,
+        // e salvar sem reabrir não grava em lugar nenhum.
+        assert!(sessao.salvar_capitulo("01.md", "# Um\n\nMais.\n").is_err());
+        assert!(!pasta.exists(), "nada foi recriado no caminho velho");
+        assert_eq!(sessao.abrir_capitulo("01.md").expect("reabrir"), "# Um\n");
+        assert_eq!(
+            sessao
+                .salvar_capitulo("01.md", "# Um\n\nMais.\n")
+                .expect("salvar"),
+            Gravacao::Gravado
+        );
+        assert_eq!(
+            fs::read_to_string(nova.join("01.md")).expect("ler"),
+            "# Um\n\nMais.\n"
+        );
+    }
+
+    #[test]
+    fn renomear_o_capitulo_aberto_troca_o_nome_que_vale() {
+        let pasta = pasta_com(&[("01.md", "# Um\n"), ("02.md", "# Dois\n")]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+        sessao.abrir_capitulo("01.md").expect("abrir capítulo");
+
+        let renomeado = sessao
+            .renomear_capitulo("01.md", "01 Início")
+            .expect("renomear");
+        assert_eq!(renomeado.nome, "01 Início.md");
+        assert_eq!(nomes(&renomeado.livro), ["01 Início.md", "02.md"]);
+        // O nome antigo não vale mais, nem para salvar.
+        assert!(sessao.abrir_capitulo("01.md").is_err());
+        assert!(sessao.salvar_capitulo("01.md", "outro").is_err());
+        assert_eq!(
+            sessao.abrir_capitulo("01 Início.md").expect("abrir o novo"),
+            "# Um\n"
+        );
+        assert_eq!(
+            sessao
+                .salvar_capitulo("01 Início.md", "# Um\n\nMais.\n")
+                .expect("salvar"),
+            Gravacao::Gravado
+        );
+        assert!(!pasta.path().join("01.md").exists());
+    }
+
+    #[test]
+    fn criar_livro_abre_a_pasta_nova_vazia_e_sem_estilo() {
+        let base = pasta_com(&[]);
+        let mut sessao = Sessao::default();
+        let livro = sessao
+            .criar_livro(base.path(), "Livro novo")
+            .expect("criar");
+        assert_eq!(livro.nome, "Livro novo");
+        assert!(livro.capitulos.is_empty());
+        assert!(livro.aviso_sem_estilo.is_some());
+        // É o livro aberto: o capítulo novo nasce nele.
+        sessao.criar_capitulo("01").expect("criar capítulo");
+        assert!(base.path().join("Livro novo/01.md").is_file());
+    }
+
+    #[test]
+    fn renomear_sem_livro_aberto_e_erro() {
+        let mut sessao = Sessao::default();
+        for resultado in [
+            sessao.renomear_livro("x").map(|_| ()),
+            sessao.renomear_capitulo("01.md", "x").map(|_| ()),
+        ] {
+            let erro = resultado.expect_err("sem livro");
+            assert!(erro.mensagem.contains("abra"), "{}", erro.mensagem);
+        }
     }
 }

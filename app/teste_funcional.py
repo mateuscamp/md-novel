@@ -4,16 +4,17 @@ chegou ao disco e o que o navegador aplicou.
 
 Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
 
-`--passada=N` roda só a passada N (de 1 a 14), para conferir uma mudança sem
-esperar as outras; dizer que a interface funciona pede as catorze.
+`--passada=N` roda só a passada N (de 1 a 15), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as quinze.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
 gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
-passadas 4, 5 e 12 gravam ao lado dele `<nome>-escuro.png`, `<nome>-foco.png`
-e `<nome>-corretor.png`.
+passadas 4, 5, 12 e 15 gravam ao lado dele `<nome>-escuro.png`,
+`<nome>-foco.png`, `<nome>-corretor.png` e `<nome>-livros.png` (o menu dos
+livros aberto).
 
-Catorze passadas:
+Quinze passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -48,6 +49,11 @@ Catorze passadas:
     ocupa espaço, Enter cria parágrafo (com a linha em branco no arquivo),
     Backspace junta, o app oferece converter `\\--` e aspas retas ao abrir o
     capítulo, e o botão da barra de baixo converte, com desfazer.
+15. vários livros: duplo clique renomeia o arquivo do capítulo e F2 abre o
+    mesmo campo; o menu do nome do livro lista os lembrados, renomeia a
+    pasta do livro (voltando ao mesmo capítulo e cursor), troca para o
+    outro livro, tira um da lista sem apagar a pasta e cria um livro novo,
+    vazio, onde o seletor (aqui, a variável do teste) mandar.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -182,6 +188,8 @@ class App:
         lingua_do_corretor: str | None = None,
         painel_de_estilo: bool = False,
         paragrafos: bool = False,
+        livros: bool = False,
+        onde_criar_livro: pathlib.Path | None = None,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -221,6 +229,11 @@ class App:
             ambiente["MD_NOVEL_TESTE_PAINEL_DE_ESTILO"] = "1"
         if paragrafos:
             ambiente["MD_NOVEL_TESTE_PARAGRAFOS"] = "1"
+        if livros:
+            ambiente["MD_NOVEL_TESTE_LIVROS"] = "1"
+        ambiente.pop("MD_NOVEL_TESTE_ONDE_CRIAR_LIVRO", None)
+        if onde_criar_livro is not None:
+            ambiente["MD_NOVEL_TESTE_ONDE_CRIAR_LIVRO"] = str(onde_criar_livro)
         ambiente.pop("MD_NOVEL_TESTE_LINGUA_DO_CORRETOR", None)
         if lingua_do_corretor is not None:
             ambiente["MD_NOVEL_TESTE_LINGUA_DO_CORRETOR"] = lingua_do_corretor
@@ -909,6 +922,60 @@ def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
             falhas.append(f"passada 14: converter ou desfazer: {conversao!r} {app.linha_com('convertido:')!r}")
 
 
+def passada_dos_livros(binario: str, captura: str | None, falhas: list[str]) -> None:
+    print("passada 15: vários livros, renomear e criar")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria, tempfile.TemporaryDirectory(
+        prefix="md-novel-dados-"
+    ) as dados:
+        base = pathlib.Path(temporaria).resolve()
+        livro_a, livro_b, novos = base / "livro-a", base / "livro-b", base / "novos"
+        for pasta in (livro_a, livro_b, novos):
+            pasta.mkdir()
+        original = montar_livro(livro_a)
+        (livro_b / "b1.md").write_bytes("# Bê\n\nTexto do outro livro.\n".encode())
+        # O livro B já foi aberto antes: está na lista do app.
+        registro = pathlib.Path(dados) / "dados" / "io.github.mateuscamp.md-novel"
+        registro.mkdir(parents=True)
+        (registro / "livros.txt").write_text(str(livro_b), encoding="utf-8")
+        app = App(binario, livro_a, livros=True, dados=pathlib.Path(dados), onde_criar_livro=novos)
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 15: a interface não chegou ao fim do roteiro")
+                return
+            capturar_se_pedido(app, captura, "-livros")
+        finally:
+            app.encerrar()
+        esperados = {
+            "capítulo renomeado:": "atual=01 Início.md posição=12 lista=01 Início.md,02-a-casa.md",
+            "F2:": "campo=02-a-casa",
+            "menu:": "livro-a*,livro-b",
+            "livro renomeado:": "nome=Livro A Renomeado capítulo=01 Início.md posição=12",
+            "trocado:": "nome=livro-b capítulo=b1.md",
+            "tirado:": "menu=livro-b*",
+            "criado:": 'nome=Livro Novo capítulos=0 vazio=true estado=""',
+            "menu no fim:": "Livro Novo*,livro-b",
+        }
+        for prefixo, esperado in esperados.items():
+            if esperado not in app.linha_com(prefixo):
+                falhas.append(f"passada 15: {prefixo} esperava {esperado!r}, veio {app.linha_com(prefixo)!r}")
+        renomeado = base / "Livro A Renomeado"
+        if sorted(entrada.name for entrada in base.iterdir()) != ["Livro A Renomeado", "livro-b", "novos"]:
+            falhas.append(f"passada 15: pastas do teste: {sorted(entrada.name for entrada in base.iterdir())}")
+        elif sorted(entrada.name for entrada in renomeado.iterdir()) != ["01 Início.md", "02-a-casa.md", "estilo.yaml"]:
+            falhas.append(f"passada 15: no livro renomeado: {sorted(entrada.name for entrada in renomeado.iterdir())}")
+        # A frase que o roteiro digitou é salva antes de o arquivo mudar de nome.
+        elif (renomeado / "01 Início.md").read_bytes() != original + FRASE.encode():
+            falhas.append("passada 15: o capítulo renomeado não tem os bytes do original com a frase digitada")
+        if sorted(entrada.name for entrada in livro_b.iterdir()) != ["b1.md"]:
+            falhas.append(f"passada 15: o livro tirado da lista mudou: {sorted(entrada.name for entrada in livro_b.iterdir())}")
+        criado = novos / "Livro Novo"
+        if not criado.is_dir() or any(criado.iterdir()):
+            falhas.append("passada 15: o livro novo não é uma pasta vazia em novos/")
+        lembrados = (registro / "livros.txt").read_text(encoding="utf-8").splitlines()
+        if lembrados != [str(criado), str(livro_b)]:
+            falhas.append(f"passada 15: a lista guardada dos livros: {lembrados}")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -938,11 +1005,11 @@ def principal() -> int:
     argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
     so_a_passada = None
     for opcao in opcoes:
-        escolhida = re.fullmatch(r"--passada=([1-9]|1[01234])", opcao)
+        escolhida = re.fullmatch(r"--passada=([1-9]|1[0-5])", opcao)
         if escolhida is not None:
             so_a_passada = int(escolhida[1])
         elif opcao != "--na-tela":
-            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 14")
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 15")
             return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
@@ -971,6 +1038,7 @@ def principal() -> int:
         lambda: passada_do_corretor(binario, captura, falhas),
         lambda: passada_do_painel_de_estilo(binario, captura, falhas),
         lambda: passada_dos_paragrafos(binario, falhas),
+        lambda: passada_dos_livros(binario, captura, falhas),
     ]
     for numero, passada in enumerate(passadas, start=1):
         if so_a_passada is None or so_a_passada == numero:

@@ -182,3 +182,97 @@ fn tem_extensao(caminho: &Path, esperada: &str) -> bool {
         .and_then(|extensao| extensao.to_str())
         .is_some_and(|extensao| extensao.eq_ignore_ascii_case(esperada))
 }
+
+/// Troca o nome de `de` para `para`, que precisa não existir: nem arquivo,
+/// nem pasta (até vazia), nem link (até quebrado). A conferência e a troca
+/// são uma operação só do sistema (ADR 0003, "Vários livros"), então o que
+/// aparecer no meio do caminho (a sincronização, outro programa) nunca é
+/// trocado. É o único jeito de renomear do md Novel: capítulo e livro.
+pub(crate) fn renomear_sem_sobrescrever(de: &Path, para: &Path) -> Result<(), ErroWorkspace> {
+    // No disco do Mac, por padrão, `a-casa` e `A-Casa` são o mesmo nome: o
+    // destino "existe" e é o próprio arquivo. Aí a troca comum é a certa.
+    if so_muda_maiuscula(de, para) {
+        fs::rename(de, para)?;
+        return Ok(());
+    }
+    trocar_sem_sobrescrever(de, para)
+}
+
+/// Os dois caminhos são o mesmo arquivo com o nome em outra caixa de letra,
+/// e a pasta não tem uma entrada com o nome novo exato: é o disco que não
+/// distingue maiúscula (o do Mac). No Linux, `a.md` e `A.md` podem ser dois
+/// links do mesmo arquivo, e aí o nome novo já está ocupado.
+fn so_muda_maiuscula(de: &Path, para: &Path) -> bool {
+    let mesma_pasta = de.parent() == para.parent();
+    let (Some(nome_de), Some(nome_para)) = (
+        de.file_name().and_then(|nome| nome.to_str()),
+        para.file_name().and_then(|nome| nome.to_str()),
+    ) else {
+        return false;
+    };
+    mesma_pasta
+        && nome_de != nome_para
+        && nome_de.to_lowercase() == nome_para.to_lowercase()
+        && mesmo_arquivo(de, para)
+        && !tem_entrada_exata(para)
+}
+
+/// A pasta lista uma entrada com exatamente este nome.
+fn tem_entrada_exata(caminho: &Path) -> bool {
+    let (Some(pasta), Some(nome)) = (caminho.parent(), caminho.file_name()) else {
+        return false;
+    };
+    fs::read_dir(pasta).is_ok_and(|entradas| {
+        entradas
+            .flatten()
+            .any(|entrada| entrada.file_name() == nome)
+    })
+}
+
+#[cfg(unix)]
+fn mesmo_arquivo(um: &Path, outro: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (fs::symlink_metadata(um), fs::symlink_metadata(outro)) {
+        (Ok(um), Ok(outro)) => um.dev() == outro.dev() && um.ino() == outro.ino(),
+        _ => false,
+    }
+}
+
+#[cfg(not(unix))]
+fn mesmo_arquivo(_um: &Path, _outro: &Path) -> bool {
+    false
+}
+
+#[cfg(unix)]
+fn trocar_sem_sobrescrever(de: &Path, para: &Path) -> Result<(), ErroWorkspace> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    use rustix::io::Errno;
+
+    match renameat_with(CWD, de, CWD, para, RenameFlags::NOREPLACE) {
+        Ok(()) => Ok(()),
+        Err(Errno::EXIST) => Err(ErroWorkspace::JaExiste {
+            recebido: para.to_owned(),
+        }),
+        // Sistema de arquivos que não sabe recusar (alguns de rede e FUSE
+        // antigos): confere e troca em dois passos.
+        Err(Errno::INVAL | Errno::NOSYS | Errno::NOTSUP) => conferir_e_trocar(de, para),
+        Err(erro) => Err(std::io::Error::from(erro).into()),
+    }
+}
+
+#[cfg(not(unix))]
+fn trocar_sem_sobrescrever(de: &Path, para: &Path) -> Result<(), ErroWorkspace> {
+    conferir_e_trocar(de, para)
+}
+
+/// Em dois passos: entre a conferência e a troca cabe uma mudança de fora,
+/// numa janela de microssegundos (registrado no ADR 0003).
+fn conferir_e_trocar(de: &Path, para: &Path) -> Result<(), ErroWorkspace> {
+    if fs::symlink_metadata(para).is_ok() {
+        return Err(ErroWorkspace::JaExiste {
+            recebido: para.to_owned(),
+        });
+    }
+    fs::rename(de, para)?;
+    Ok(())
+}

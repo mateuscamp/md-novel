@@ -13,3 +13,16 @@ export function sugestaoDeNome(nomes: string[]): string {
   const [, numero = "", separador = ""] = achado;
   return String(Number(numero) + 1).padStart(numero.length, "0") + separador;
 }
+
+/** O nome do capítulo como aparece no campo de renomear: sem o `.md`, que
+ *  o Rust põe de volta. Só `.md` sozinho não é extensão: fica como está. */
+export function nomeParaEditar(nome: string): string {
+  return nome.length > 3 && nome.toLowerCase().endsWith(".md") ? nome.slice(0, -3) : nome;
+}
+
+/** A tecla que abre o campo de renomear no capítulo da lateral: F2, como
+ *  no explorador de arquivos, e nunca no meio da composição de um acento. */
+export const TECLA_DE_RENOMEAR = "F2";
+export function teclaDeRenomear(tecla: string, compondo: boolean): boolean {
+  return !compondo && tecla === TECLA_DE_RENOMEAR;
+}

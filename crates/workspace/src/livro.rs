@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::str;
 
 use crate::erro::ErroWorkspace;
-use crate::saida::SaidaPendente;
+use crate::saida::{SaidaPendente, renomear_sem_sobrescrever};
 use crate::texto::{contar_palavras, titulo_do_texto};
 
 /// Marca de ordem de bytes do UTF-8, que alguns editores do Windows gravam.
@@ -22,6 +22,32 @@ const TAMANHO_MAXIMO_DO_NOME: usize = 100;
 /// recebe a pasta pela sincronização.
 const PROIBIDOS_NO_NOME: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
+/// O nome serve de nome de arquivo ou de pasta em todo sistema por onde o
+/// livro passa. Ponto no começo é arquivo escondido (e o `..` que sai da
+/// pasta); ponto ou espaço no fim o Windows corta.
+fn nome_serve(base: &str) -> bool {
+    !base.is_empty()
+        && !base.starts_with('.')
+        && !base.ends_with('.')
+        && !base.ends_with(' ')
+        && base.chars().count() <= TAMANHO_MAXIMO_DO_NOME
+        && !base
+            .chars()
+            .any(|letra| letra.is_control() || PROIBIDOS_NO_NOME.contains(&letra))
+}
+
+/// O nome da pasta de um livro: o que o autor digitou, sem espaços em volta.
+/// Público para o app conferir antes de abrir o seletor de onde criar.
+pub fn nome_de_livro(nome: &str) -> Result<String, ErroWorkspace> {
+    let aparado = nome.trim();
+    if !nome_serve(aparado) {
+        return Err(ErroWorkspace::NomeDeLivroInvalido {
+            recebido: nome.to_owned(),
+        });
+    }
+    Ok(aparado.to_owned())
+}
+
 /// O nome do arquivo de um capítulo novo: o que o autor digitou, sem espaços
 /// em volta e com `.md` no fim (digitado ou não).
 fn nome_de_capitulo(nome: &str) -> Result<String, ErroWorkspace> {
@@ -33,22 +59,33 @@ fn nome_de_capitulo(nome: &str) -> Result<String, ErroWorkspace> {
             aparado.is_char_boundary(*corte) && aparado[*corte..].eq_ignore_ascii_case(".md")
         })
         .map_or(aparado, |corte| &aparado[..corte]);
-    // Ponto no começo é arquivo escondido (e o `..` que sai da pasta); ponto
-    // ou espaço no fim o Windows corta.
-    let serve = !base.is_empty()
-        && !base.starts_with('.')
-        && !base.ends_with('.')
-        && !base.ends_with(' ')
-        && base.chars().count() <= TAMANHO_MAXIMO_DO_NOME
-        && !base
-            .chars()
-            .any(|letra| letra.is_control() || PROIBIDOS_NO_NOME.contains(&letra));
-    if !serve {
+    if !nome_serve(base) {
         return Err(ErroWorkspace::NomeDeCapituloInvalido {
             recebido: nome.to_owned(),
         });
     }
     Ok(format!("{base}.md"))
+}
+
+/// Cria a pasta de um livro novo, vazia, dentro de `onde`, e abre. O nome é
+/// o que o autor digitou, conferido como o de capítulo. Uma pasta ou arquivo
+/// com esse nome nunca é reaproveitado: o livro novo nasce sem nada dentro.
+pub fn criar_livro(onde: &Path, nome: &str) -> Result<Livro, ErroWorkspace> {
+    let nome = nome_de_livro(nome)?;
+    if !onde.is_dir() {
+        return Err(ErroWorkspace::NaoEPasta {
+            recebido: onde.to_owned(),
+        });
+    }
+    let destino = onde.join(nome);
+    // `create_dir` confere e cria numa operação só, e recusa até link quebrado.
+    match fs::create_dir(&destino) {
+        Ok(()) => Livro::abrir(&destino),
+        Err(erro) if erro.kind() == ErrorKind::AlreadyExists => {
+            Err(ErroWorkspace::JaExiste { recebido: destino })
+        }
+        Err(erro) => Err(erro.into()),
+    }
 }
 
 /// Um estilo.yaml escrito à mão tem menos de 10 kB.
@@ -222,6 +259,45 @@ impl Livro {
         }
         SaidaPendente::preparar(&destino, "md")?.publicar_sem_sobrescrever()?;
         Ok(arquivo)
+    }
+
+    /// Troca o nome do arquivo de um capítulo da lista e devolve o nome novo
+    /// (com `.md`). Os bytes não mudam: o título é a linha `#` do texto, que
+    /// o autor muda escrevendo. Nunca passa por cima de outro arquivo.
+    pub fn renomear_capitulo(&self, atual: &str, novo: &str) -> Result<String, ErroWorkspace> {
+        // O nome atual vem da interface: só vale se estiver na lista.
+        if !self.capitulos()?.iter().any(|capitulo| capitulo == atual) {
+            return Err(ErroWorkspace::CapituloDesconhecido {
+                nome: atual.to_owned(),
+            });
+        }
+        let novo = nome_de_capitulo(novo)?;
+        if novo != atual {
+            renomear_sem_sobrescrever(&self.pasta.join(atual), &self.pasta.join(&novo))?;
+        }
+        Ok(novo)
+    }
+
+    /// Troca o nome da pasta do livro, na mesma pasta de cima, e devolve o
+    /// livro no lugar novo. Nada dentro dela muda (ADR 0003, "Vários
+    /// livros"). Nunca passa por cima de outra pasta, nem vazia.
+    pub fn renomear(&self, nome: &str) -> Result<Livro, ErroWorkspace> {
+        let nome = nome_de_livro(nome)?;
+        let Some(de_cima) = self.pasta.parent() else {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "a pasta {:?} não está dentro de outra; não há onde renomeá-la",
+                    self.pasta
+                ),
+            )
+            .into());
+        };
+        let destino = de_cima.join(nome);
+        if destino != self.pasta {
+            renomear_sem_sobrescrever(&self.pasta, &destino)?;
+        }
+        Livro::abrir(&destino)
     }
 
     /// O texto do `estilo.yaml`, ou `None` se o livro ainda não tem um.
