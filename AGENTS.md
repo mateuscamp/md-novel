@@ -18,9 +18,10 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São sete passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São oito passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
-  guardada e criar o estilo.yaml pelo botão. Ele abre o app num
+  guardada, criar o estilo.yaml pelo botão e o conforto (zoom, lateral,
+  máquina de escrever). `--passada=N` roda uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -94,6 +95,10 @@ comando. ADRs em `docs/adr/`.
   um caso em `titulos.txt`, confira com `pandoc -f markdown -t native`;
   `crates/exportar/tests/titulos_pandoc.rs` reprova o caso que o Pandoc não
   confirma.
+- Tecla ou rolagem que faz algo na janela entra em função pura com teste
+  (`foco.ts`, `conforto.ts`), usa Ctrl (Cmd no Mac) e nunca vale no meio da
+  composição de um acento. O que a janela faz além do livro (zoom, tela
+  cheia) é comando do Rust com a regra em `janela.rs`, não capacidade nova.
 - O editor mostra o Markdown, não esconde: sinal digitado (`*`, `#`, `:::`)
   continua na tela. O modo foco nunca esconde os avisos.
 - Caminho de imagem num capítulo vale a partir da pasta daquele capítulo

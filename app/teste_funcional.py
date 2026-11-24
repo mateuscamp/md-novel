@@ -2,14 +2,17 @@
 de livro temporária, deixa a interface digitar uma frase e confere o que
 chegou ao disco e o que o navegador aplicou.
 
-Uso: python3 -I teste_funcional.py [--na-tela] <binário md-novel-app> [png da janela]
+Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
+
+`--passada=N` roda só a passada N (de 1 a 8), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as oito.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
 gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
 passadas 4 e 5 gravam ao lado dele `<nome>-escuro.png` e `<nome>-foco.png`.
 
-Sete passadas:
+Oito passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -22,6 +25,9 @@ Sete passadas:
 6. a escolha de tema fica guardada: clica no botão, fecha, abre de novo.
 7. criar o estilo.yaml: numa pasta sem ele, o botão do aviso grava o modelo,
    a tela passa a usá-lo e o que foi digitado não se perde.
+8. conforto: Ctrl+= e Ctrl+rolagem mudam o zoom da janela, F9 esconde a
+   lateral, F10 leva a linha do cursor para o meio; ao abrir de novo, as
+   três escolhas voltam.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -148,6 +154,7 @@ class App:
         cliques_no_tema: int = 0,
         dados: pathlib.Path | None = None,
         criar_estilo: bool = False,
+        conforto: bool = False,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -173,6 +180,8 @@ class App:
             ambiente["MD_NOVEL_TESTE_FOCO"] = "1"
         if criar_estilo:
             ambiente["MD_NOVEL_TESTE_CRIAR_ESTILO"] = "1"
+        if conforto:
+            ambiente["MD_NOVEL_TESTE_CONFORTO"] = "1"
         self.processo = subprocess.Popen(
             [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
         )
@@ -508,6 +517,61 @@ def passada_de_criar_o_estilo(binario: str, falhas: list[str]) -> None:
         conferir_disco(pasta, original, falhas, "passada 7")
 
 
+def passada_do_conforto(binario: str, falhas: list[str]) -> None:
+    print("passada 8: zoom, lateral e máquina de escrever, e as escolhas guardadas")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria, tempfile.TemporaryDirectory(
+        prefix="md-novel-dados-"
+    ) as dados:
+        pasta = pathlib.Path(temporaria)
+        montar_livro(pasta)
+        # Primeira janela: usa as teclas e fecha, como o autor fecharia.
+        app = App(binario, pasta, conforto=True, fechar=True, dados=pathlib.Path(dados))
+        try:
+            if app.esperar_linha("tela cheia:") is None:
+                falhas.append("passada 8: a primeira janela não chegou ao fim do roteiro")
+                return
+            try:
+                app.processo.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                falhas.append("passada 8: a primeira janela não fechou")
+                return
+        finally:
+            app.encerrar()
+        abertura = app.linha_com("conforto ao abrir:")
+        if "zoom=100%" not in abertura or "lateral=flex" not in abertura or "máquina=desligada" not in abertura:
+            falhas.append(f"passada 8: a janela nova não abriu no padrão: {abertura!r}")
+        # Dois Ctrl+= e uma rolagem para baixo: 100, 110, 120, 110.
+        zoom = app.linha_com("zoom:")
+        larguras = re.search(r"largura (\d+) -> (\d+)", zoom)
+        if 'botão="110%"' not in zoom or larguras is None or not int(larguras[2]) < int(larguras[1]):
+            falhas.append(f"passada 8: o zoom não chegou a 110% ou a janela não aproximou: {zoom!r}")
+        if "lateral: none apertado=true" not in app.linha_com("lateral:"):
+            falhas.append(f"passada 8: F9 não escondeu a lateral: {app.linha_com('lateral:')!r}")
+        maquina = app.linha_com("máquina:")
+        desvios = re.search(r"antes=(\d+)px de (\d+)px depois=(\d+)px", maquina)
+        # Antes o cursor está no fim da tela; depois, a menos de duas linhas do meio.
+        if "máquina: ligada" not in maquina or desvios is None or not (
+            int(desvios[3]) < 60 and int(desvios[1]) > int(desvios[2]) / 4
+        ):
+            falhas.append(f"passada 8: F10 não levou a linha do cursor para o meio: {maquina!r}")
+        if "pedido aceito (true e depois false)" not in app.linha_com("tela cheia:"):
+            falhas.append(f"passada 8: {app.linha_com('tela cheia:')!r}")
+        # Segunda janela, na mesma pasta de dados e sem tocar em nada.
+        app = App(binario, pasta, dados=pathlib.Path(dados))
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 8: a segunda janela não chegou ao fim do roteiro")
+                return
+        finally:
+            app.encerrar()
+        abertura = app.linha_com("conforto ao abrir:")
+        if "zoom=110%" not in abertura or "lateral=none" not in abertura or "máquina=ligada" not in abertura:
+            falhas.append(f"passada 8: as escolhas não ficaram guardadas: {abertura!r}")
+        reaberta = re.search(r"largura=(\d+)", abertura)
+        if larguras is not None and (reaberta is None or int(reaberta[1]) != int(larguras[2])):
+            falhas.append(f"passada 8: o zoom guardado não foi aplicado ao abrir: {abertura!r}")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -523,13 +587,26 @@ def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
         MD_NOVEL_TESTE_FORA_DA_TELA="1",
     )
     comando = ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1200x900x24"]
-    absolutos = [str(pathlib.Path(argumento).resolve()) for argumento in argumentos]
+    # As opções passam como estão; binário e png viram caminho inteiro.
+    absolutos = [
+        argumento if argumento.startswith("--") else str(pathlib.Path(argumento).resolve())
+        for argumento in argumentos
+    ]
     comando += [sys.executable, "-I", "-B", str(pathlib.Path(__file__).resolve()), *absolutos]
     return subprocess.run(comando, env=ambiente, check=False).returncode
 
 
 def principal() -> int:
-    argumentos = [argumento for argumento in sys.argv[1:] if argumento != "--na-tela"]
+    opcoes = [argumento for argumento in sys.argv[1:] if argumento.startswith("--")]
+    argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
+    so_a_passada = None
+    for opcao in opcoes:
+        escolhida = re.fullmatch(r"--passada=([1-8])", opcao)
+        if escolhida is not None:
+            so_a_passada = int(escolhida[1])
+        elif opcao != "--na-tela":
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 8")
+            return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
         print(__doc__)
@@ -538,20 +615,27 @@ def principal() -> int:
         if shutil.which("xvfb-run") is None:
             print("sem xvfb-run: instale o Xvfb ou passe --na-tela para abrir a janela na sua tela")
             return 2
-        return reexecutar_fora_da_tela(argumentos)
+        return reexecutar_fora_da_tela([*opcoes, *argumentos])
     binario = argumentos[0]
     captura = argumentos[1] if len(argumentos) > 1 else None
     falhas: list[str] = []
-    passada_do_salvamento_automatico(binario, falhas)
-    passada_de_fechar_a_janela(binario, falhas)
-    passada_de_exportar(binario, captura, falhas)
-    passada_do_tema_escuro(binario, captura, falhas)
-    passada_do_modo_foco(binario, captura, falhas)
-    passada_da_escolha_de_tema(binario, falhas)
-    passada_de_criar_o_estilo(binario, falhas)
+    passadas = [
+        lambda: passada_do_salvamento_automatico(binario, falhas),
+        lambda: passada_de_fechar_a_janela(binario, falhas),
+        lambda: passada_de_exportar(binario, captura, falhas),
+        lambda: passada_do_tema_escuro(binario, captura, falhas),
+        lambda: passada_do_modo_foco(binario, captura, falhas),
+        lambda: passada_da_escolha_de_tema(binario, falhas),
+        lambda: passada_de_criar_o_estilo(binario, falhas),
+        lambda: passada_do_conforto(binario, falhas),
+    ]
+    for numero, passada in enumerate(passadas, start=1):
+        if so_a_passada is None or so_a_passada == numero:
+            passada()
     for falha in falhas:
         print(f"FALHOU: {falha}")
-    print("teste funcional:", "reprovado" if falhas else "aprovado")
+    resultado = "reprovado" if falhas else "aprovado"
+    print("teste funcional:", resultado if so_a_passada is None else f"{resultado} (só a passada {so_a_passada})")
     return 1 if falhas else 0
 
 

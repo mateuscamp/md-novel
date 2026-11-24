@@ -269,6 +269,33 @@ botão no próprio aviso.
 - **Fica de fora:** editar o estilo por dentro do app. Mudou o arquivo,
   fecha e abre.
 
+## A quarta fatia: conforto de quem escreve (2026-11-24)
+
+O autor pediu que Ctrl+rolagem aproximasse o texto, um botão simples para
+esconder a lateral e "elementos de qualidade de vida do Zettlr e do
+novelWriter". Esta fatia traz os que são só da janela; busca, corretor,
+aspas, sessão e capítulo novo vêm depois.
+
+- **O zoom é da janela inteira**, como o de um navegador e o do Zettlr:
+  Ctrl+rolagem, Ctrl+=, Ctrl+- e Ctrl+0, de 50% a 300%, de 10 em 10. Quem
+  aplica é o WebView (`set_zoom`), por um comando do Rust que confere a
+  faixa. Zoom só do texto foi descartado: `zoom` de CSS desalinha o clique
+  e o cursor do CodeMirror, e escalar as medidas exigiria mudar o CSS que o
+  crate `estilo` gera para todos (ADR 0002). O custo: a lateral e as barras
+  crescem junto. Inverte se o autor quiser a moldura do mesmo tamanho.
+- **A lateral se esconde com o botão ☰ ou F9.** O modo foco continua
+  escondendo a lateral e as barras por conta própria.
+- **Máquina de escrever (botão ou F10):** digitar ou andar com o teclado
+  leva a linha do cursor para o meio da área de texto. Com o mouse não: a
+  tela fugiria de debaixo do ponteiro.
+- **Tela cheia em F11**, pelo Rust (`set_fullscreen`), sem botão.
+- **Nenhuma capacidade nova do Tauri:** zoom e tela cheia são comandos do
+  próprio app, não a API de janela exposta à página.
+- **Zoom, lateral e máquina de escrever ficam guardados** no armazenamento
+  da janela, como o tema, fora da pasta do livro.
+- **O atalho usa Ctrl (Cmd no Mac), nunca Super nem Alt:** no Linux a tecla
+  Super é do gerenciador de janelas.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -283,6 +310,9 @@ botão no próprio aviso.
 | O estilo criado pelo app nunca sobrescreve | `crates/workspace/tests/livro.rs` (`criar_estilo_*`) | `make check` | criar o estilo com um `estilo.yaml` já na pasta (arquivo ou link) muda algum byte, ou deixa outro arquivo na pasta |
 | O botão grava o exemplo do projeto e devolve o livro com CSS | testes `criar_estilo_*` de `app/src-tauri/src/sessao.rs` | `make check` | o arquivo gravado difere de `exemplos/estilo.yaml`, o livro volta sem CSS ou o aviso continua |
 | Criar o estilo na janela de verdade | `app/teste_funcional.py`, passada 7 | à mão, fora do CI | o aviso sem o botão, a linha do corpo sem o alinhamento do modelo depois do clique, a frase digitada perdida ou arquivo a mais na pasta |
+| Regras do conforto | `app/src/conforto.test.ts` | `make check` | o zoom sai da faixa ou anda fora do passo, uma tecla de zoom vale sem Ctrl, um atalho vale no meio de um acento, ou a faixa da interface difere da do Rust |
+| O Rust confere o zoom | testes de `app/src-tauri/src/janela.rs` | `make check` | um zoom fora de 50% a 300% é aceito |
+| O conforto na janela de verdade | `app/teste_funcional.py`, passada 8 | à mão, fora do CI | o zoom não muda a largura útil da janela, F9 não esconde a lateral, F10 não leva o cursor para o meio, ou as três escolhas não voltam ao abrir de novo |
 | A moldura na janela de verdade | `app/teste_funcional.py`, passadas 1, 4, 5 e 6 | à mão, fora do CI | contagem na tela diferente da conta do teste, título colado com tamanho de título, tema sem efeito ou esquecido ao reabrir, barras visíveis no modo foco ou aviso escondido nele |
 
 Regra derivada no `AGENTS.md`, quando aceito: o app (`src-tauri`) é

@@ -101,6 +101,10 @@ O que ele faz hoje:
   escolha fica guardada. O tema é só da janela: não muda o .docx.
 - Modo foco (botão "Foco" ou F8): fica só a folha. Esc ou F8 sai. Os avisos
   continuam aparecendo.
+- Zoom da janela com Ctrl+rolagem, Ctrl+= e Ctrl+- (Ctrl+0 volta a 100%).
+  O botão ☰, ou F9, esconde a lateral. "Máquina", ou F10, liga a máquina de
+  escrever: a linha em que você escreve fica no meio da tela. F11 é tela
+  cheia. Zoom, lateral e máquina de escrever ficam guardados.
 - "Exportar .docx…" salva o que está na tela, pergunta onde gravar e gera o
   livro inteiro, com os capítulos em ordem e o estilo do `estilo.yaml`. Os
   avisos do Pandoc (uma imagem que não foi achada, por exemplo) aparecem na
