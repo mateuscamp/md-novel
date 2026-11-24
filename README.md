@@ -216,3 +216,12 @@ Confere a interface (tipos, testes, build) e depois formata, roda o clippy e
 a suíte inteira do Rust; precisa do `pandoc` no PATH, do Node e, no Linux, do
 `webkit2gtk-4.1`. O CI roda o mesmo comando no Linux e no Mac arm64. Regras do repositório em
 [AGENTS.md](AGENTS.md), decisões em [docs/adr](docs/adr/README.md).
+
+## Licença
+
+O md Novel é software livre, sob a GNU General Public License, versão 3
+(`GPL-3.0-only`): você pode usar, estudar, modificar e redistribuir, desde
+que o que redistribuir continue sob a mesma licença. Ele vem sem garantia
+nenhuma. O texto completo está em [LICENSE](LICENSE).
+
+Copyright © 2026 Mateus Campelo

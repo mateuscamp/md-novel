@@ -6,6 +6,7 @@ members = ["crates/estilo", "crates/workspace", "crates/exportar", "crates/cli",
 edition = "2024"
 rust-version = "1.85"
 publish = false
+license = "GPL-3.0-only"
 
 [workspace.dependencies]
 estilo = { path = "crates/estilo" }

@@ -1,6 +1,7 @@
 {
   "name": "md-novel-app",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",

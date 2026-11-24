@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 description = "O programa de desktop: adaptador fino entre a janela e os crates workspace e estilo."
 
 [[bin]]
