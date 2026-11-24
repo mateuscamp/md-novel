@@ -9,8 +9,20 @@
     <aside id="lateral">
       <header id="livro">
         <p class="rotulo">Livro</p>
-        <h1 id="nome-do-livro">md Novel</h1>
+        <div id="cabeca-do-livro">
+          <h1 id="nome-do-livro">md Novel</h1>
+          <button id="livros" type="button" title="Trocar de livro, criar um livro novo ou renomear este" aria-label="Livros" aria-haspopup="true" aria-expanded="false" aria-controls="menu-de-livros"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4" /></svg></button>
+        </div>
         <p id="resumo-do-livro"></p>
+        <input id="campo-do-livro" type="text" aria-label="Nome do livro" title="Enter confirma; Esc desiste" hidden />
+        <div id="menu-de-livros" hidden>
+          <ul id="lista-de-livros" aria-label="Livros abertos antes"></ul>
+          <div id="acoes-dos-livros">
+            <button id="novo-livro" type="button" title="Cria uma pasta vazia para um livro novo, onde você escolher">Novo livro…</button>
+            <button id="abrir-outra-pasta" type="button" title="Abre como livro uma pasta que já existe">Abrir outra pasta…</button>
+            <button id="renomear-livro" type="button" title="Muda o nome da pasta do livro; nada dentro dela muda">Renomear este livro…</button>
+          </div>
+        </div>
       </header>
       <nav aria-label="Capítulos">
         <ol id="capitulos"></ol>

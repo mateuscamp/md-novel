@@ -4,7 +4,8 @@
 use std::fs;
 use std::path::Path;
 
-const DEPENDENCIAS_PERMITIDAS: [&str; 2] = ["tempfile", "thiserror"];
+// `rustix`: renomear sem passar por cima do que existe (ADR 0003, "Vários livros").
+const DEPENDENCIAS_PERMITIDAS: [&str; 3] = ["rustix", "tempfile", "thiserror"];
 const PROIBIDO_NO_CODIGO: [&str; 4] = ["std::process", "std::net", "Command::new", "tauri"];
 const CRATES_DO_NUCLEO: [&str; 4] = ["estilo", "workspace", "exportar", "cli"];
 

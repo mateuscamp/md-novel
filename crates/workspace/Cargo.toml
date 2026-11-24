@@ -11,5 +11,11 @@ description = "A pasta do livro: listar e ler capítulos e toda gravação em di
 tempfile.workspace = true
 thiserror.workspace = true
 
+# Renomear sem passar por cima do que existe (ADR 0003, "Vários livros"):
+# `renameat2` com RENAME_NOREPLACE no Linux e `renameatx_np` com RENAME_EXCL
+# no Mac. Já entrava no projeto pelo `tempfile`.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1", features = ["fs"] }
+
 [lints]
 workspace = true

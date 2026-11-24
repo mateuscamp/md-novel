@@ -18,7 +18,10 @@ use tauri_plugin_dialog::DialogExt;
 use workspace::Gravacao;
 
 use crate::exportacao::ExportacaoFeita;
-use crate::sessao::{CapituloCriado, ErroDeComando, EstiloNoPainel, LivroAberto, Sessao};
+use crate::memoria::LivroLembrado;
+use crate::sessao::{
+    CapituloCriado, ErroDeComando, EstiloNoPainel, LivroAberto, LivroRenomeado, Sessao,
+};
 
 #[derive(Default)]
 struct Estado {
@@ -86,6 +89,151 @@ fn criar_capitulo(
     estado: State<'_, Estado>,
 ) -> Result<CapituloCriado, ErroDeComando> {
     estado.sessao().criar_capitulo(&nome)
+}
+
+/// A pasta de dados do app, onde fica a lista dos livros.
+fn pasta_de_dados(app: &AppHandle) -> Result<PathBuf, ErroDeComando> {
+    app.path().app_data_dir().map_err(|erro| ErroDeComando {
+        codigo: "erro",
+        mensagem: format!("não achei a pasta de dados do md Novel: {erro}"),
+    })
+}
+
+/// O caminho que a página mandou, se ele está na lista dos livros lembrados.
+fn livro_lembrado(app: &AppHandle, pasta: &str) -> Result<PathBuf, ErroDeComando> {
+    memoria::lembrado(&pasta_de_dados(app)?, pasta).map_err(|mensagem| ErroDeComando {
+        codigo: "erro",
+        mensagem,
+    })
+}
+
+/// Os livros já abertos, para o menu do nome do livro (ADR 0003, "Vários
+/// livros"). Livro cuja pasta sumiu fica de fora.
+#[tauri::command(async)]
+fn livros_lembrados(app: AppHandle, estado: State<'_, Estado>) -> Vec<LivroLembrado> {
+    let aberto = estado.sessao().pasta().map(Path::to_owned);
+    let livros = pasta_de_dados(&app)
+        .map(|dados| memoria::ler_livros(&dados))
+        .unwrap_or_default();
+    memoria::para_o_menu(&livros, aberto.as_deref())
+}
+
+/// Abre um livro do menu. A página devolve o caminho que recebeu na lista, e
+/// só um que está nela vale: caminho novo vem só do seletor do sistema.
+#[tauri::command(async)]
+fn abrir_livro_lembrado(
+    pasta: String,
+    app: AppHandle,
+    estado: State<'_, Estado>,
+) -> Result<LivroAberto, ErroDeComando> {
+    let caminho = livro_lembrado(&app, &pasta)?;
+    let livro = estado.sessao().abrir_pasta(&caminho)?;
+    lembrar(&app, Path::new(&livro.pasta));
+    Ok(livro)
+}
+
+/// Tira um livro da lista, sem apagar nada do disco, e devolve a lista nova.
+/// O livro aberto não sai: o menu sempre mostra onde o autor está.
+#[tauri::command(async)]
+fn esquecer_livro(
+    pasta: String,
+    app: AppHandle,
+    estado: State<'_, Estado>,
+) -> Result<Vec<LivroLembrado>, ErroDeComando> {
+    let aberto = estado.sessao().pasta().map(Path::to_owned);
+    let dados = pasta_de_dados(&app)?;
+    memoria::tirar_da_lista(&dados, &pasta, aberto.as_deref()).map_err(|mensagem| {
+        ErroDeComando {
+            codigo: "erro",
+            mensagem,
+        }
+    })?;
+    Ok(memoria::para_o_menu(
+        &memoria::ler_livros(&dados),
+        aberto.as_deref(),
+    ))
+}
+
+/// Renomeia a pasta do livro aberto. A lista de livros troca o caminho no
+/// mesmo lugar; o que a página lembra, ela troca com o `antes` devolvido.
+#[tauri::command(async)]
+fn renomear_livro(
+    nome: String,
+    app: AppHandle,
+    estado: State<'_, Estado>,
+) -> Result<LivroRenomeado, ErroDeComando> {
+    let renomeado = estado.sessao().renomear_livro(&nome)?;
+    if let Ok(dados) = app.path().app_data_dir() {
+        let trocado = memoria::trocar(
+            &dados,
+            Path::new(&renomeado.antes),
+            Path::new(&renomeado.livro.pasta),
+        );
+        if let Err(erro) = trocado {
+            eprintln!("aviso: não consegui guardar o nome novo do livro na lista: {erro}");
+        }
+    }
+    Ok(renomeado)
+}
+
+/// Renomeia o arquivo de um capítulo da lista. A página manda o nome atual,
+/// que vem da lista, e o novo, que o autor digitou e o `workspace` confere.
+#[tauri::command(async)]
+fn renomear_capitulo(
+    atual: String,
+    novo: String,
+    estado: State<'_, Estado>,
+) -> Result<CapituloCriado, ErroDeComando> {
+    estado.sessao().renomear_capitulo(&atual, &novo)
+}
+
+/// Cria a pasta de um livro novo. O nome vem do autor e é conferido antes de
+/// abrir o seletor; onde ela fica, o autor escolhe no seletor do sistema,
+/// que abre na pasta de cima do livro aberto. `None` se ele cancelou.
+#[tauri::command(async)]
+fn criar_livro(
+    nome: String,
+    app: AppHandle,
+    estado: State<'_, Estado>,
+) -> Result<Option<LivroAberto>, ErroDeComando> {
+    let nome = workspace::nome_de_livro(&nome)?;
+    let onde = match onde_criar_de_teste() {
+        Some(onde) => onde,
+        None => {
+            let de_cima = estado
+                .sessao()
+                .pasta()
+                .and_then(Path::parent)
+                .map(Path::to_owned);
+            let mut seletor = app
+                .dialog()
+                .file()
+                .set_title(format!("Onde criar a pasta do livro \"{nome}\""));
+            if let Some(de_cima) = de_cima {
+                seletor = seletor.set_directory(de_cima);
+            }
+            let Some(escolhida) = seletor.blocking_pick_folder() else {
+                return Ok(None);
+            };
+            escolhida.into_path().map_err(|erro| ErroDeComando {
+                codigo: "erro",
+                mensagem: format!("a pasta escolhida não é um caminho deste computador: {erro}"),
+            })?
+        }
+    };
+    let livro = estado.sessao().criar_livro(&onde, &nome)?;
+    lembrar(&app, Path::new(&livro.pasta));
+    Ok(Some(livro))
+}
+
+/// Onde criar o livro no teste funcional, no lugar do seletor do sistema. Só
+/// existe em build de depuração.
+fn onde_criar_de_teste() -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        std::env::var_os("MD_NOVEL_TESTE_ONDE_CRIAR_LIVRO").map(PathBuf::from)
+    } else {
+        None
+    }
 }
 
 /// Entra na tela cheia ou sai dela. Devolve se a janela ficou em tela cheia.
@@ -181,13 +329,14 @@ fn estado_do_corretor(estado: State<'_, Estado>) -> EstadoDoCorretor {
         .clone()
 }
 
-/// Guarda o livro aberto como o último, para a próxima abertura do app.
+/// Põe o livro aberto no alto da lista dos lembrados, para o menu e para a
+/// próxima abertura do app.
 /// Não conseguir guardar não atrapalha o trabalho: só fica o aviso no terminal.
 fn lembrar(app: &AppHandle, pasta: &Path) {
     let Ok(dados) = app.path().app_data_dir() else {
         return;
     };
-    if let Err(erro) = memoria::guardar_ultimo_livro(&dados, pasta) {
+    if let Err(erro) = memoria::lembrar(&dados, pasta) {
         eprintln!("aviso: não consegui guardar o último livro aberto: {erro}");
     }
 }
@@ -311,6 +460,8 @@ struct RoteiroDeTeste {
     painel_de_estilo: bool,
     /// Medir a linha em branco escondida, criar e juntar parágrafo, converter sinais.
     paragrafos: bool,
+    /// Renomear capítulo e livro, trocar de livro, tirar da lista e criar livro.
+    livros: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -337,6 +488,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         corretor: std::env::var_os("MD_NOVEL_TESTE_CORRETOR").is_some(),
         painel_de_estilo: std::env::var_os("MD_NOVEL_TESTE_PAINEL_DE_ESTILO").is_some(),
         paragrafos: std::env::var_os("MD_NOVEL_TESTE_PARAGRAFOS").is_some(),
+        livros: std::env::var_os("MD_NOVEL_TESTE_LIVROS").is_some(),
     })
 }
 
@@ -402,6 +554,12 @@ fn main() {
             estilo_para_editar,
             salvar_estilo,
             criar_capitulo,
+            livros_lembrados,
+            abrir_livro_lembrado,
+            esquecer_livro,
+            renomear_livro,
+            renomear_capitulo,
+            criar_livro,
             estado_do_corretor,
             alternar_tela_cheia,
             abrir_capitulo,

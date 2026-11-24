@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 
-use workspace::{ErroWorkspace, Gravacao, Livro};
+use workspace::{ErroWorkspace, Gravacao, Livro, criar_livro};
 
 fn pasta_com(arquivos: &[(&str, &[u8])]) -> tempfile::TempDir {
     let pasta = tempfile::tempdir().expect("pasta temporária");
@@ -615,4 +615,307 @@ fn gravar_estilo_recusa_quando_o_arquivo_nao_esta_como_o_painel_leu() {
         "{erro:?}"
     );
     assert_eq!(nomes(pasta.path()), ["01.md"]);
+}
+
+// Renomear capítulo e livro, e criar livro (ADR 0003, "Vários livros"). O
+// livro é a pasta: renomear muda um nome e nada mais, e nunca passa por cima
+// do que já existe, nem de uma pasta vazia, nem de um link quebrado.
+
+#[test]
+fn renomear_capitulo_muda_so_o_nome_do_arquivo() {
+    // BOM e CR LF: os bytes do capítulo precisam sair exatamente iguais.
+    let bytes: &[u8] = b"\xEF\xBB\xBF# Um\r\n\r\nTexto.\r\n";
+    let pasta = pasta_com(&[("01.md", bytes), ("02.md", b"dois")]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+
+    assert_eq!(
+        livro
+            .renomear_capitulo("01.md", " 01 A partida ")
+            .expect("renomear"),
+        "01 A partida.md"
+    );
+    assert_eq!(nomes(pasta.path()), ["01 A partida.md", "02.md"]);
+    assert_eq!(
+        fs::read(pasta.path().join("01 A partida.md")).expect("ler"),
+        bytes
+    );
+    assert_eq!(livro.capitulos().expect("listar"), nomes(pasta.path()));
+    // Com o mesmo nome, digitado com ou sem .md, nada muda.
+    for igual in ["02", "02.md"] {
+        assert_eq!(
+            livro.renomear_capitulo("02.md", igual).expect("mesmo nome"),
+            "02.md"
+        );
+    }
+    assert_eq!(nomes(pasta.path()), ["01 A partida.md", "02.md"]);
+}
+
+#[test]
+fn renomear_capitulo_nunca_passa_por_cima_de_outro() {
+    let pasta = pasta_com(&[("01.md", b"um"), ("02.md", b"dois")]);
+    // Uma pasta com nome de capítulo não é capítulo, mas ocupa o nome.
+    fs::create_dir(pasta.path().join("pasta.md")).expect("criar pasta");
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+    for (novo, ocupado) in [("02", "02.md"), ("pasta", "pasta.md")] {
+        let erro = livro.renomear_capitulo("01.md", novo).expect_err(novo);
+        assert!(
+            matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido.ends_with(ocupado)),
+            "{novo}: {erro:?}"
+        );
+    }
+    assert_eq!(fs::read(pasta.path().join("01.md")).expect("ler"), b"um");
+    assert_eq!(fs::read(pasta.path().join("02.md")).expect("ler"), b"dois");
+    assert!(pasta.path().join("pasta.md").is_dir());
+    assert_eq!(nomes(pasta.path()), ["01.md", "02.md", "pasta.md"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn renomear_capitulo_nao_passa_por_cima_de_link_quebrado() {
+    let pasta = pasta_com(&[("01.md", b"um")]);
+    std::os::unix::fs::symlink("nao-existe.md", pasta.path().join("link.md")).expect("criar link");
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+    let erro = livro.renomear_capitulo("01.md", "link").expect_err("link");
+    assert!(matches!(erro, ErroWorkspace::JaExiste { .. }), "{erro:?}");
+    assert_eq!(fs::read(pasta.path().join("01.md")).expect("ler"), b"um");
+    assert!(
+        fs::symlink_metadata(pasta.path().join("link.md"))
+            .expect("o link continua")
+            .is_symlink()
+    );
+}
+
+#[test]
+fn renomear_capitulo_so_aceita_capitulo_da_lista_e_nome_que_serve() {
+    let base = pasta_com(&[("fora.md", b"fora")]);
+    let pasta = base.path().join("livro");
+    fs::create_dir_all(pasta.join("sub")).expect("criar pastas");
+    for (nome, conteudo) in [
+        ("01.md", "um"),
+        (".oculto.md", "oculto"),
+        ("notas.txt", "notas"),
+        ("sub/x.md", "x"),
+    ] {
+        fs::write(pasta.join(nome), conteudo).expect("criar arquivo");
+    }
+    let livro = Livro::abrir(&pasta).expect("abrir");
+    for atual in [
+        "nao-existe.md",
+        "../fora.md",
+        "sub/x.md",
+        ".oculto.md",
+        "notas.txt",
+    ] {
+        let erro = livro.renomear_capitulo(atual, "novo").expect_err(atual);
+        assert!(
+            matches!(erro, ErroWorkspace::CapituloDesconhecido { .. }),
+            "{atual}: {erro:?}"
+        );
+    }
+    for novo in ["", "  ", "../fora", "sub/x", "..", ".oculto", "dois:pontos"] {
+        let erro = livro.renomear_capitulo("01.md", novo).expect_err(novo);
+        assert!(
+            matches!(erro, ErroWorkspace::NomeDeCapituloInvalido { .. }),
+            "{novo:?}: {erro:?}"
+        );
+    }
+    assert_eq!(nomes(&pasta), [".oculto.md", "01.md", "notas.txt", "sub"]);
+    assert_eq!(nomes(&pasta.join("sub")), ["x.md"]);
+    assert_eq!(nomes(base.path()), ["fora.md", "livro"]);
+}
+
+#[test]
+fn renomear_o_livro_muda_o_nome_da_pasta_e_nada_dentro_dela() {
+    let base = pasta_com(&[("O dom da pele.docx", b"docx do autor")]);
+    let pasta = base.path().join("o-dom-da-pele-md");
+    fs::create_dir_all(pasta.join("imagens")).expect("criar pastas");
+    for (nome, conteudo) in [
+        ("01.md", "# Um\n"),
+        ("estilo.yaml", "versao: 1\n"),
+        ("imagens/a.png", "png"),
+    ] {
+        fs::write(pasta.join(nome), conteudo).expect("criar arquivo");
+    }
+    let livro = Livro::abrir(&pasta).expect("abrir");
+
+    let renomeado = livro.renomear(" O dom da pele ").expect("renomear");
+    assert_eq!(renomeado.pasta(), base.path().join("O dom da pele"));
+    assert_eq!(nomes(base.path()), ["O dom da pele", "O dom da pele.docx"]);
+    assert_eq!(
+        nomes(renomeado.pasta()),
+        ["01.md", "estilo.yaml", "imagens"]
+    );
+    assert_eq!(
+        fs::read(base.path().join("O dom da pele.docx")).expect("ler"),
+        b"docx do autor"
+    );
+    assert_eq!(
+        fs::read(renomeado.pasta().join("imagens/a.png")).expect("ler"),
+        b"png"
+    );
+    // O livro renomeado é um livro como antes: lê e salva no lugar novo.
+    let mut capitulo = renomeado.ler_capitulo("01.md").expect("ler");
+    assert_eq!(
+        capitulo.salvar("# Um\n\nMais.\n").expect("salvar"),
+        Gravacao::Gravado
+    );
+    assert_eq!(
+        fs::read(renomeado.pasta().join("01.md")).expect("ler"),
+        b"# Um\n\nMais.\n"
+    );
+    // O mesmo nome não muda nada.
+    let igual = renomeado.renomear("O dom da pele").expect("mesmo nome");
+    assert_eq!(igual.pasta(), renomeado.pasta());
+    assert_eq!(nomes(base.path()), ["O dom da pele", "O dom da pele.docx"]);
+}
+
+#[test]
+fn renomear_o_livro_nunca_passa_por_cima_de_outra_pasta_nem_de_arquivo() {
+    let base = pasta_com(&[("arquivo", b"do autor")]);
+    let pasta = base.path().join("livro");
+    fs::create_dir(&pasta).expect("criar livro");
+    fs::write(pasta.join("01.md"), "um").expect("criar capítulo");
+    // A pasta vazia é a que o sistema trocaria sem erro num rename comum.
+    fs::create_dir(base.path().join("vazia")).expect("criar pasta vazia");
+    let livro = Livro::abrir(&pasta).expect("abrir");
+    for ocupado in ["vazia", "arquivo"] {
+        let erro = livro.renomear(ocupado).expect_err(ocupado);
+        assert!(
+            matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido.ends_with(ocupado)),
+            "{ocupado}: {erro:?}"
+        );
+    }
+    assert_eq!(nomes(base.path()), ["arquivo", "livro", "vazia"]);
+    assert_eq!(nomes(&pasta), ["01.md"]);
+    assert_eq!(nomes(&base.path().join("vazia")), Vec::<String>::new());
+    assert_eq!(
+        fs::read(base.path().join("arquivo")).expect("ler"),
+        b"do autor"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn renomear_o_livro_nao_passa_por_cima_de_link_quebrado() {
+    let base = pasta_com(&[]);
+    let pasta = base.path().join("livro");
+    fs::create_dir(&pasta).expect("criar livro");
+    std::os::unix::fs::symlink("nao-existe", base.path().join("link")).expect("criar link");
+    let erro = Livro::abrir(&pasta)
+        .expect("abrir")
+        .renomear("link")
+        .expect_err("link");
+    assert!(matches!(erro, ErroWorkspace::JaExiste { .. }), "{erro:?}");
+    assert!(pasta.is_dir());
+    assert!(
+        fs::symlink_metadata(base.path().join("link"))
+            .expect("o link continua")
+            .is_symlink()
+    );
+}
+
+#[test]
+fn nome_de_livro_que_sai_da_pasta_ou_nao_serve_e_recusado() {
+    let base = pasta_com(&[]);
+    let pasta = base.path().join("livro");
+    fs::create_dir(&pasta).expect("criar livro");
+    let livro = Livro::abrir(&pasta).expect("abrir");
+    let longo = "a".repeat(101);
+    let recusados = [
+        "",
+        "   ",
+        ".",
+        "..",
+        "../fora",
+        "a/b",
+        "a\\b",
+        ".oculto",
+        "dois:pontos",
+        "per?gunta",
+        "fim com ponto.",
+        "com\nquebra",
+        longo.as_str(),
+    ];
+    for nome in recusados {
+        for erro in [
+            livro.renomear(nome).expect_err(nome),
+            criar_livro(base.path(), nome).expect_err(nome),
+        ] {
+            assert!(
+                matches!(erro, ErroWorkspace::NomeDeLivroInvalido { .. }),
+                "{nome:?}: {erro:?}"
+            );
+            assert!(
+                erro.to_string().contains("O dom da pele"),
+                "falta o exemplo: {erro}"
+            );
+        }
+    }
+    assert_eq!(nomes(base.path()), ["livro"]);
+}
+
+#[test]
+fn criar_livro_cria_uma_pasta_vazia_e_nunca_reaproveita_o_que_existe() {
+    let base = pasta_com(&[("arquivo", b"do autor")]);
+    let novo = criar_livro(base.path(), " Livro Novo ").expect("criar");
+    assert_eq!(novo.pasta(), base.path().join("Livro Novo"));
+    assert_eq!(nomes(novo.pasta()), Vec::<String>::new());
+    assert_eq!(novo.capitulos().expect("listar"), Vec::<String>::new());
+
+    for ocupado in ["Livro Novo", "arquivo"] {
+        let erro = criar_livro(base.path(), ocupado).expect_err(ocupado);
+        assert!(
+            matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido.ends_with(ocupado)),
+            "{ocupado}: {erro:?}"
+        );
+    }
+    let erro = criar_livro(&base.path().join("nao-existe"), "x").expect_err("sem pasta");
+    assert!(matches!(erro, ErroWorkspace::NaoEPasta { .. }), "{erro:?}");
+    assert_eq!(nomes(base.path()), ["Livro Novo", "arquivo"]);
+    assert_eq!(
+        fs::read(base.path().join("arquivo")).expect("ler"),
+        b"do autor"
+    );
+}
+
+#[test]
+fn renomear_trocando_so_maiusculas_funciona_ate_no_disco_que_nao_as_distingue() {
+    // O disco do Mac, por padrão, acha "a-casa" e "A-Casa" o mesmo nome: a
+    // troca que recusa destino existente recusaria sem esta exceção.
+    let base = pasta_com(&[]);
+    let pasta = base.path().join("livro");
+    fs::create_dir(&pasta).expect("criar livro");
+    fs::write(pasta.join("01-a-casa.md"), "casa").expect("criar capítulo");
+    let livro = Livro::abrir(&pasta).expect("abrir");
+    assert_eq!(
+        livro
+            .renomear_capitulo("01-a-casa.md", "01-A-Casa")
+            .expect("renomear capítulo"),
+        "01-A-Casa.md"
+    );
+    assert_eq!(nomes(&pasta), ["01-A-Casa.md"]);
+    let renomeado = livro.renomear("Livro").expect("renomear livro");
+    assert_eq!(renomeado.pasta(), base.path().join("Livro"));
+    assert_eq!(nomes(base.path()), ["Livro"]);
+    assert_eq!(
+        fs::read(base.path().join("Livro/01-A-Casa.md")).expect("ler"),
+        b"casa"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn trocar_a_caixa_para_o_nome_de_outro_link_do_mesmo_arquivo_e_recusado() {
+    // No Linux, `a.md` e `A.md` podem ser dois nomes do mesmo arquivo. O
+    // sistema não faz nada ao renomear um por cima do outro: dizer que deu
+    // certo seria mentir.
+    let pasta = pasta_com(&[("a.md", b"texto")]);
+    fs::hard_link(pasta.path().join("a.md"), pasta.path().join("A.md")).expect("criar link");
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+    let erro = livro.renomear_capitulo("a.md", "A").expect_err("já existe");
+    assert!(
+        matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido.ends_with("A.md")),
+        "{erro:?}"
+    );
+    assert_eq!(nomes(pasta.path()), ["A.md", "a.md"]);
 }

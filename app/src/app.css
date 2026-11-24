@@ -78,6 +78,52 @@ button:focus-visible { outline: 2px solid var(--destaque); outline-offset: 1px; 
 #resumo-do-livro { margin: 4px 0 0; font-size: 12px; color: var(--tinta-fraca); }
 #resumo-do-livro:empty { display: none; }
 
+/* O nome do livro abre o menu dos livros (ADR 0003, "Vários livros"). */
+#livro { position: relative; }
+#cabeca-do-livro { display: flex; align-items: flex-start; gap: 4px; }
+#nome-do-livro { flex: 1; min-width: 0; cursor: pointer; }
+#livros {
+  flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: 6px; background: none; color: var(--tinta-fraca); cursor: pointer;
+}
+#livros:hover, #livros[aria-expanded="true"] { background: var(--realce); color: var(--tinta); }
+#livros svg { width: 14px; height: 14px; }
+#campo-do-livro, #capitulos input {
+  font: inherit; color: var(--tinta); background: var(--papel);
+  border: 1px solid var(--destaque); border-radius: 6px; padding: 5px 9px; min-width: 0;
+}
+#campo-do-livro { width: 100%; margin-top: 8px; box-sizing: border-box; }
+#capitulos input { width: 100%; box-sizing: border-box; margin: 2px 0; }
+#menu-de-livros {
+  position: absolute; z-index: 10; left: 8px; right: 8px; top: calc(100% - 4px);
+  max-height: 60vh; overflow: auto; padding: 6px;
+  border: 1px solid var(--borda); border-radius: 8px; background: var(--papel);
+  box-shadow: 0 6px 24px #0000002e;
+}
+#menu-de-livros[hidden] { display: none; }
+#lista-de-livros { list-style: none; margin: 0; padding: 0; }
+#lista-de-livros li { display: flex; align-items: stretch; gap: 2px; }
+#lista-de-livros .livro {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start;
+  text-align: left; padding: 6px 8px; border: 0; border-left: 3px solid transparent;
+  border-radius: 6px; background: none; cursor: pointer;
+}
+#lista-de-livros .livro:hover, #lista-de-livros .tirar:hover { background: var(--realce); }
+#lista-de-livros .livro[aria-current="true"] { border-left-color: var(--destaque); font-weight: 600; }
+#lista-de-livros .onde { font-size: 11px; font-weight: 400; color: var(--tinta-fraca); overflow-wrap: anywhere; }
+#lista-de-livros .tirar {
+  flex: none; width: 26px; padding: 0; border: 0; border-radius: 6px;
+  background: none; color: var(--tinta-fraca); cursor: pointer;
+}
+#acoes-dos-livros {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid var(--borda);
+}
+#acoes-dos-livros button {
+  text-align: left; padding: 6px 8px; border: 0; border-radius: 6px; background: none; cursor: pointer;
+}
+#acoes-dos-livros button:not(:disabled):hover { background: var(--realce); }
+
 #lateral nav { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
 #capitulos { list-style: none; margin: 0; padding: 0; }
 #capitulos button {

@@ -3,7 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { sugestaoDeNome } from "./capitulo.ts";
+import { nomeParaEditar, sugestaoDeNome, teclaDeRenomear } from "./capitulo.ts";
 import {
   type AcaoDeZoom,
   acaoDaRoda,
@@ -37,6 +37,7 @@ import {
   semEstilo,
 } from "./painel.ts";
 import { diaDe, escreverHoje, lerHoje, lerMeta, META_MAXIMA, rotuloDeHoje } from "./meta.ts";
+import { chavesParaMudar } from "./livros.ts";
 import { escreverOnde, lerOnde } from "./onde.ts";
 import {
   type CapituloNaLista,
@@ -211,9 +212,9 @@ function desenharItem(botao: HTMLButtonElement, capitulo: CapituloNaLista): void
   // O nome do arquivo só aparece embaixo quando em cima está o título.
   arquivo.textContent = capitulo.titulo === null ? "" : capitulo.nome;
   botao.title =
-    capitulo.palavras === null
+    (capitulo.palavras === null
       ? `${capitulo.nome}: não foi possível ler este arquivo como capítulo. Abra-o para ver o motivo.`
-      : `${capitulo.nome}: ${rotuloDePalavras(capitulo.palavras)}`;
+      : `${capitulo.nome}: ${rotuloDePalavras(capitulo.palavras)}`) + ". Duplo clique ou F2 renomeia o arquivo.";
 }
 
 function desenharLista(): void {
@@ -229,7 +230,19 @@ function desenharLista(): void {
         botao.append(parte);
       }
       desenharItem(botao, capitulo);
-      botao.addEventListener("click", () => void abrirCapitulo(capitulo.nome));
+      botao.setAttribute("aria-current", String(capitulo.nome === capituloAtual));
+      // O segundo clique de um duplo clique não reabre: o duplo clique é o
+      // de renomear.
+      botao.addEventListener("click", (evento) => {
+        if (evento.detail < 2) void abrirCapitulo(capitulo.nome);
+      });
+      botao.addEventListener("dblclick", () => editarNomeDoCapitulo(capitulo.nome));
+      botao.addEventListener("keydown", (evento) => {
+        if (teclaDeRenomear(evento.key, evento.isComposing)) {
+          evento.preventDefault();
+          editarNomeDoCapitulo(capitulo.nome);
+        }
+      });
       item.append(botao);
       return item;
     }),
@@ -350,11 +363,21 @@ function mostrarEstadoDaGravacao(novo: Estado): void {
   }
 }
 
+/** Um campo de texto da moldura (não o editor) está com o foco. */
+function campoDeTextoComFoco(): boolean {
+  return document.activeElement instanceof HTMLInputElement;
+}
+
 /** O que dizer quando sobrou texto fora do disco e o autor quer sair dele. */
 const TEXTO_NAO_SALVO =
   "Este capítulo tem texto que não foi salvo. Resolva o aviso acima antes de sair dele, para não perder o que digitou.";
 
 async function abrirCapitulo(nome: string, descartarMudancas = false): Promise<void> {
+  // Clicar no capítulo que já está na tela não o relê: o cursor fica onde está.
+  if (nome === capituloAtual && !descartarMudancas) {
+    if (!campoDeTextoComFoco()) editor.focar();
+    return;
+  }
   // Trocar de capítulo espera a gravação em curso e salva o que falta. Se
   // sobrou texto fora do disco, fica onde está, a menos que o autor tenha
   // pedido para descartar.
@@ -375,7 +398,9 @@ async function abrirCapitulo(nome: string, descartarMudancas = false): Promise<v
     mostrarSelecao();
     vazio.hidden = true;
     folha.hidden = false;
-    editor.focar();
+    // O autor pode ter aberto um campo (o de renomear) enquanto o capítulo
+    // carregava: o foco fica com ele.
+    if (!campoDeTextoComFoco()) editor.focar();
     registrar(`capítulo: ${nome}, ${editor.view.state.doc.lines} linhas`);
     botaoDeConverter.disabled = false;
     oferecerConversao();
@@ -775,6 +800,281 @@ campoDoCapituloNovo.addEventListener("keydown", (evento) => {
   }
 });
 
+// ---- Renomear capítulo ----
+
+/** Troca o botão do capítulo por um campo com o nome do arquivo. Enter
+ *  renomeia; Esc, ou sair do campo, desiste. Quem confere o nome e troca o
+ *  arquivo é o Rust (`workspace::Livro::renomear_capitulo`). */
+function editarNomeDoCapitulo(nome: string): void {
+  const botao = botaoDoCapitulo(nome);
+  if (botao === undefined || botao.hidden) return;
+  const campo = document.createElement("input");
+  campo.type = "text";
+  campo.value = nomeParaEditar(nome);
+  campo.setAttribute("aria-label", `Nome novo do arquivo ${nome}`);
+  campo.title = "Enter renomeia o arquivo do capítulo; Esc desiste. O .md entra sozinho";
+  let aberto = true;
+  const fechar = () => {
+    if (!aberto) return;
+    aberto = false;
+    campo.remove();
+    botao.hidden = false;
+  };
+  campo.addEventListener("blur", fechar);
+  campo.addEventListener("keydown", (evento) => {
+    if (evento.isComposing) return;
+    if (evento.key === "Escape") {
+      evento.stopPropagation();
+      fechar();
+      botao.focus();
+    } else if (evento.key === "Enter") {
+      void renomearCapitulo(nome, campo.value, fechar);
+    }
+  });
+  botao.hidden = true;
+  botao.after(campo);
+  campo.focus();
+  campo.select();
+}
+
+let renomeandoCapitulo = false;
+async function renomearCapitulo(atual: string, novo: string, fecharCampo: () => void): Promise<void> {
+  // Um segundo Enter antes da resposta daria "não é capítulo" sem motivo.
+  if (renomeandoCapitulo) return;
+  renomeandoCapitulo = true;
+  try {
+    // O que está digitado vai para o disco antes de o arquivo mudar de nome.
+    if (!(await gravador.salvarAgora())) {
+      avisoDeGravacao ??= avisarDaGravacao(TEXTO_NAO_SALVO);
+      return;
+    }
+    const eraOAberto = capituloAtual === atual;
+    const posicao = editor.posicao();
+    const renomeado = await invoke<{ nome: string; livro: LivroAberto }>("renomear_capitulo", { atual, novo });
+    fecharCampo();
+    capitulos = renomeado.livro.capitulos;
+    desenharLista();
+    if (eraOAberto) {
+      // O nome antigo não vale mais no Rust: reabre pelo novo, no mesmo lugar.
+      await abrirCapitulo(renomeado.nome, true);
+      if (capituloAtual === renomeado.nome) {
+        editor.irPara(posicao);
+        guardarOnde();
+      }
+    }
+    mostrarContagem();
+    registrar(`capítulo com nome novo: ${renomeado.nome}`);
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+  } finally {
+    renomeandoCapitulo = false;
+  }
+}
+
+// ---- Livros: trocar, renomear, criar (ADR 0003, "Vários livros") ----
+
+/** Um livro no menu (`LivroLembrado` do Rust). A página devolve `pasta`
+ *  como recebeu: o Rust só aceita um caminho que está na lista dele. */
+interface LivroLembrado {
+  pasta: string;
+  nome: string;
+  onde: string;
+  aberto: boolean;
+}
+
+const botaoDosLivros = elemento<HTMLButtonElement>("livros");
+const menuDeLivros = elemento("menu-de-livros");
+const listaDeLivros = elemento<HTMLUListElement>("lista-de-livros");
+const campoDoLivro = elemento<HTMLInputElement>("campo-do-livro");
+const botaoRenomearLivro = elemento<HTMLButtonElement>("renomear-livro");
+
+function desenharLivros(livros: LivroLembrado[]): void {
+  listaDeLivros.replaceChildren(
+    ...livros.map((livro) => {
+      const item = document.createElement("li");
+      const botao = document.createElement("button");
+      botao.type = "button";
+      botao.className = "livro";
+      botao.dataset.pasta = livro.pasta;
+      botao.title = livro.pasta;
+      botao.setAttribute("aria-current", String(livro.aberto));
+      const nome = document.createElement("span");
+      nome.textContent = livro.nome;
+      const onde = document.createElement("span");
+      onde.className = "onde";
+      onde.textContent = livro.onde;
+      botao.append(nome, onde);
+      botao.addEventListener("click", () => void abrirLivroLembrado(livro));
+      item.append(botao);
+      // O livro aberto não sai da lista: o menu sempre mostra onde o autor está.
+      if (!livro.aberto) {
+        const tirar = document.createElement("button");
+        tirar.type = "button";
+        tirar.className = "tirar";
+        tirar.textContent = "×";
+        tirar.title = "Tirar da lista. A pasta continua no disco";
+        tirar.setAttribute("aria-label", `Tirar ${livro.nome} da lista`);
+        tirar.addEventListener("click", () => void tirarDaLista(livro));
+        item.append(tirar);
+      }
+      return item;
+    }),
+  );
+}
+
+async function abrirMenuDeLivros(): Promise<void> {
+  fecharCampoDoLivro();
+  try {
+    desenharLivros(await invoke<LivroLembrado[]>("livros_lembrados"));
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+    return;
+  }
+  botaoRenomearLivro.disabled = pastaDoLivro === null;
+  menuDeLivros.hidden = false;
+  botaoDosLivros.setAttribute("aria-expanded", "true");
+  (listaDeLivros.querySelector<HTMLButtonElement>("button") ?? menuDeLivros.querySelector("button"))?.focus();
+}
+
+function fecharMenuDeLivros(): void {
+  menuDeLivros.hidden = true;
+  botaoDosLivros.setAttribute("aria-expanded", "false");
+}
+
+function alternarMenuDeLivros(): void {
+  if (menuDeLivros.hidden) void abrirMenuDeLivros();
+  else fecharMenuDeLivros();
+}
+
+/** Antes de sair do livro: o que está digitado vai para o disco, e o lugar
+ *  do cursor fica guardado. `false` se sobrou texto fora do disco. */
+async function salvarAntesDeSairDoLivro(): Promise<boolean> {
+  if (!(await gravador.salvarAgora())) {
+    avisoDeGravacao ??= avisarDaGravacao(TEXTO_NAO_SALVO);
+    return false;
+  }
+  guardarOnde();
+  return true;
+}
+
+async function abrirLivroLembrado(livro: LivroLembrado): Promise<void> {
+  fecharMenuDeLivros();
+  if (livro.aberto || !(await salvarAntesDeSairDoLivro())) return;
+  try {
+    await mostrarLivro(await invoke<LivroAberto>("abrir_livro_lembrado", { pasta: livro.pasta }));
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+  }
+}
+
+async function tirarDaLista(livro: LivroLembrado): Promise<void> {
+  try {
+    desenharLivros(await invoke<LivroLembrado[]>("esquecer_livro", { pasta: livro.pasta }));
+    registrar(`fora da lista: ${livro.nome}`);
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+  }
+}
+
+/** O campo do nome do livro serve para os dois pedidos que digitam nome. */
+type PedidoDeNome = "novo" | "renomear";
+function pedirNomeDoLivro(pedido: PedidoDeNome): void {
+  fecharMenuDeLivros();
+  campoDoLivro.dataset.pedido = pedido;
+  campoDoLivro.value = pedido === "renomear" ? (nomeDoLivro.textContent ?? "") : "";
+  campoDoLivro.placeholder = pedido === "renomear" ? "nome novo do livro" : "nome do livro novo";
+  campoDoLivro.setAttribute("aria-label", pedido === "renomear" ? "Nome novo do livro" : "Nome do livro novo");
+  campoDoLivro.hidden = false;
+  campoDoLivro.focus();
+  campoDoLivro.select();
+}
+
+function fecharCampoDoLivro(): void {
+  campoDoLivro.hidden = true;
+}
+
+/** O que o app lembra do livro no armazenamento da janela (onde parou, a
+ *  conta de hoje) muda para a pasta nova. */
+function mudarRegistrosDoLivro(antes: string, depois: string): void {
+  try {
+    const armazenamento = window.localStorage;
+    const chaves = Array.from({ length: armazenamento.length }, (_, indice) => armazenamento.key(indice)).filter(
+      (chave): chave is string => chave !== null,
+    );
+    for (const [de, para] of chavesParaMudar(chaves, antes, depois)) {
+      const valor = armazenamento.getItem(de);
+      if (valor === null) continue;
+      armazenamento.setItem(para, valor);
+      armazenamento.removeItem(de);
+    }
+  } catch {
+    // Sem armazenamento: o livro renomeado abre no começo, como um novo.
+  }
+}
+
+let pedidoDeLivroEmCurso = false;
+async function confirmarNomeDoLivro(): Promise<void> {
+  // Um segundo Enter antes da resposta daria "já existe" sem motivo.
+  if (pedidoDeLivroEmCurso) return;
+  pedidoDeLivroEmCurso = true;
+  const nome = campoDoLivro.value;
+  try {
+    if (!(await salvarAntesDeSairDoLivro())) return;
+    if (campoDoLivro.dataset.pedido === "renomear") {
+      const renomeado = await invoke<{ antes: string; livro: LivroAberto }>("renomear_livro", { nome });
+      fecharCampoDoLivro();
+      mudarRegistrosDoLivro(renomeado.antes, renomeado.livro.pasta);
+      await mostrarLivro(renomeado.livro);
+      registrar(`livro com nome novo: ${renomeado.livro.nome}`);
+    } else {
+      const criado = await invoke<LivroAberto | null>("criar_livro", { nome });
+      // `null`: o autor cancelou no seletor; o campo fica para tentar de novo.
+      if (criado === null) return;
+      fecharCampoDoLivro();
+      await mostrarLivro(criado);
+      registrar(`livro criado: ${criado.nome}`);
+    }
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+  } finally {
+    pedidoDeLivroEmCurso = false;
+  }
+}
+
+botaoDosLivros.addEventListener("click", alternarMenuDeLivros);
+nomeDoLivro.addEventListener("click", alternarMenuDeLivros);
+elemento("novo-livro").addEventListener("click", () => pedirNomeDoLivro("novo"));
+botaoRenomearLivro.addEventListener("click", () => pedirNomeDoLivro("renomear"));
+elemento("abrir-outra-pasta").addEventListener("click", () => {
+  fecharMenuDeLivros();
+  void escolherPasta();
+});
+menuDeLivros.addEventListener("keydown", (evento) => {
+  if (evento.key !== "Escape") return;
+  evento.stopPropagation();
+  fecharMenuDeLivros();
+  botaoDosLivros.focus();
+});
+// Clicar fora fecha o menu.
+document.addEventListener("pointerdown", (evento) => {
+  if (menuDeLivros.hidden || !(evento.target instanceof Node)) return;
+  if (menuDeLivros.contains(evento.target) || botaoDosLivros.contains(evento.target) || nomeDoLivro.contains(evento.target)) return;
+  fecharMenuDeLivros();
+});
+campoDoLivro.addEventListener("blur", () => {
+  if (!pedidoDeLivroEmCurso) fecharCampoDoLivro();
+});
+campoDoLivro.addEventListener("keydown", (evento) => {
+  if (evento.isComposing) return;
+  if (evento.key === "Escape") {
+    evento.stopPropagation();
+    fecharCampoDoLivro();
+    editor.focar();
+  } else if (evento.key === "Enter") {
+    void confirmarNomeDoLivro();
+  }
+});
+
 // O corretor é do sistema: o Rust liga e diz se achou o dicionário. O aviso
 // de dicionário ausente aparece uma vez por abertura do app, não a cada livro.
 const estadoDoCorretor = invoke<EstadoDoCorretor>("estado_do_corretor").catch(
@@ -817,6 +1117,8 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
   pastaDoLivro = livro.pasta;
   hoje = null;
   fecharCampoDoCapituloNovo();
+  fecharMenuDeLivros();
+  fecharCampoDoLivro();
   // O painel é do livro que estava aberto.
   fecharPainelDoEstilo();
   nomeDoLivro.textContent = livro.nome;
@@ -848,6 +1150,8 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
     folha.hidden = true;
     vazio.hidden = false;
     textoDoVazio.textContent = "Esta pasta ainda não tem capítulos (.md).";
+    // O "Salvo às…" era do capítulo do livro anterior.
+    estado.textContent = "";
     return;
   }
   // Reabre onde o autor parou neste livro, se o capítulo ainda existe.
@@ -901,7 +1205,9 @@ async function diagnosticar(): Promise<void> {
   registrar(`corretor: línguas=${corretor.linguas.join(",")} aviso=${corretor.aviso === null ? "não" : "sim"}`);
   registrar(`onde: capítulo=${capituloAtual} posição=${editor.posicao()} hoje="${botaoDeHoje.textContent}"`);
   const roteiro = await invoke<RoteiroDeTeste | null>("roteiro_de_teste");
-  if (roteiro) {
+  // Uma vez por janela: trocar de livro no meio do roteiro passa por aqui de novo.
+  if (roteiro && !roteiroJaRodou) {
+    roteiroJaRodou = true;
     // O tema do roteiro vale só para esta janela: não é guardado.
     if (roteiro.tema !== null) {
       preferenciaDeTema = lerPreferencia(roteiro.tema);
@@ -933,6 +1239,7 @@ async function diagnosticar(): Promise<void> {
     if (roteiro.corretor) await roteiroDoCorretor();
     if (roteiro.painel_de_estilo) await roteiroDoPainelDeEstilo();
     if (roteiro.paragrafos) await roteiroDosParagrafos();
+    if (roteiro.livros) await roteiroDosLivros();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -1141,6 +1448,79 @@ async function roteiroDoCapituloNovo(): Promise<void> {
   registrar(`capítulo repetido: ${erros} lista=${capitulos.length}`);
 }
 
+/** Renomeia o capítulo e o livro, troca de livro, tira um da lista e cria
+ *  um livro novo, pelos mesmos cliques e teclas do autor. */
+async function roteiroDosLivros(): Promise<void> {
+  const espera = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  const ate = async (condicao: () => boolean) => {
+    for (let vez = 0; vez < 200 && !condicao(); vez += 1) await espera(50);
+  };
+  const tecla = (alvo: EventTarget, key: string) =>
+    alvo.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  const menu = () =>
+    [...listaDeLivros.querySelectorAll<HTMLButtonElement>(".livro")]
+      .map((botao) => `${botao.firstElementChild?.textContent ?? ""}${botao.getAttribute("aria-current") === "true" ? "*" : ""}`)
+      .join(",");
+  const abrirMenu = async () => {
+    botaoDosLivros.click();
+    await ate(() => !menuDeLivros.hidden && listaDeLivros.childElementCount > 0);
+  };
+
+  // O capítulo aberto, pelo duplo clique, com o cursor num lugar conhecido.
+  // O mouse manda dois cliques antes do dblclick, e o teste manda igual.
+  editor.irPara(12);
+  const aberto = botaoDoCapitulo(capituloAtual ?? "");
+  for (const detail of [1, 2]) aberto?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail }));
+  aberto?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
+  // O que os cliques pedem ao Rust termina depois do dblclick, como com o autor.
+  await espera(300);
+  const campo = listaDeCapitulos.querySelector("input");
+  if (campo !== null) {
+    campo.value = "01 Início";
+    tecla(campo, "Enter");
+  }
+  await ate(() => capituloAtual === "01 Início.md");
+  registrar(
+    `capítulo renomeado: atual=${capituloAtual} posição=${editor.posicao()} lista=${capitulos.map((capitulo) => capitulo.nome).join(",")}`,
+  );
+  // F2 no capítulo abre o mesmo campo; Esc desiste.
+  const segundo = botaoDoCapitulo("02-a-casa.md");
+  segundo?.focus();
+  if (segundo !== undefined) tecla(segundo, "F2");
+  const campoDoF2 = listaDeCapitulos.querySelector("input");
+  registrar(`F2: campo=${campoDoF2?.value ?? "ausente"}`);
+  if (campoDoF2 !== null) tecla(campoDoF2, "Escape");
+
+  await abrirMenu();
+  registrar(`menu: ${menu()}`);
+  elemento("renomear-livro").click();
+  campoDoLivro.value = "Livro A Renomeado";
+  tecla(campoDoLivro, "Enter");
+  await ate(() => nomeDoLivro.textContent === "Livro A Renomeado" && capituloAtual !== null);
+  await espera(200);
+  registrar(`livro renomeado: nome=${nomeDoLivro.textContent} capítulo=${capituloAtual} posição=${editor.posicao()}`);
+
+  await abrirMenu();
+  listaDeLivros.querySelector<HTMLButtonElement>('.livro[aria-current="false"]')?.click();
+  await ate(() => nomeDoLivro.textContent === "livro-b" && capituloAtual !== null);
+  registrar(`trocado: nome=${nomeDoLivro.textContent} capítulo=${capituloAtual}`);
+
+  await abrirMenu();
+  listaDeLivros.querySelector<HTMLButtonElement>(".tirar")?.click();
+  await ate(() => listaDeLivros.querySelectorAll(".livro").length === 1);
+  registrar(`tirado: menu=${menu()}`);
+
+  elemento("novo-livro").click();
+  campoDoLivro.value = "Livro Novo";
+  tecla(campoDoLivro, "Enter");
+  await ate(() => nomeDoLivro.textContent === "Livro Novo");
+  await espera(200);
+  registrar(`criado: nome=${nomeDoLivro.textContent} capítulos=${capitulos.length} vazio=${!vazio.hidden} estado="${estado.textContent}"`);
+  await abrirMenu();
+  // O menu fica aberto: é o que a captura da passada 15 mostra.
+  registrar(`menu no fim: ${menu()}`);
+}
+
 /** Define a meta pelo campo, troca de capítulo pelo clique na lateral e
  *  deixa o cursor num lugar conhecido, para a próxima abertura conferir. */
 async function roteiroDaSessao(): Promise<void> {
@@ -1269,7 +1649,10 @@ interface RoteiroDeTeste {
   corretor: boolean;
   painel_de_estilo: boolean;
   paragrafos: boolean;
+  livros: boolean;
 }
+
+let roteiroJaRodou = false;
 
 /** As contagens como estão escritas na tela. */
 function contagemNaTela(): string {

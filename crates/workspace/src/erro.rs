@@ -57,6 +57,11 @@ pub enum ErroWorkspace {
     NomeDeCapituloInvalido { recebido: String },
 
     #[error(
+        "o nome de livro {recebido:?} não serve: use letras, números, espaços e hifens, com até 100 caracteres, sem barra, sem dois-pontos e sem começar ou terminar com ponto; por exemplo, O dom da pele"
+    )]
+    NomeDeLivroInvalido { recebido: String },
+
+    #[error(
         "o estilo.yaml em {caminho:?} mudou no disco depois que o painel de estilo o leu (outro programa ou a sincronização); nada foi gravado. Feche e abra o painel de estilo para ver o que está lá agora"
     )]
     EstiloMudouPorFora { caminho: PathBuf },

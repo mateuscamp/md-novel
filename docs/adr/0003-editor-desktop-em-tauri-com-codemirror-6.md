@@ -359,7 +359,8 @@ O autor pediu para criar capítulo sem sair do programa.
 - **Nasce vazio.** O app não escreve título nem modelo: o que entra no
   manuscrito é do autor.
 - **Fica de fora:** renomear, apagar e reordenar capítulos. Continuam sendo
-  feitos na pasta, e a ordem continua sendo a do nome.
+  feitos na pasta, e a ordem continua sendo a do nome. (Renomear entrou
+  depois: "Vários livros, e renomear livro e capítulo", abaixo.)
 
 ## Corretor ortográfico (2026-11-24)
 
@@ -459,6 +460,58 @@ entre os parágrafos", que era a linha em branco do Markdown.
   desenhado tem a altura da letra, como no Word. O custo é um ciclo de
   desenho a mais por mudança, que o CodeMirror documenta.
 
+## Vários livros, e renomear livro e capítulo (2026-11-24)
+
+O autor passou um livro inteiro para o md Novel ("O dom da pele", 29
+capítulos) e pediu um jeito de separar os livros, trocar entre eles e
+renomear o livro e os capítulos. As escolhas são dele:
+
+- **O livro continua sendo a pasta.** Não há arquivo de projeto: o nome do
+  livro é o nome da pasta, e a ordem dos capítulos continua sendo a do nome
+  do arquivo.
+- **Renomear o livro renomeia a pasta, e só ela.** Os capítulos, o
+  `estilo.yaml` e qualquer .docx de fora não mudam. O nome segue a regra do
+  nome de capítulo (sem barra, sem `..`, sem começar com ponto, sem os
+  caracteres que o Windows recusa, até 100 caracteres), e pode ter espaço e
+  acento.
+- **Renomear um capítulo renomeia o arquivo `.md`.** O título, que é a
+  linha `#` do texto, o autor muda escrevendo. O texto não é tocado: os
+  bytes do arquivo são os mesmos. Duplo clique ou F2 no capítulo abre o
+  campo do nome.
+- **Nada é renomeado por cima de outro.** A troca é a do sistema que recusa
+  quando o destino existe (`renameat2` com `RENAME_NOREPLACE` no Linux,
+  `renameatx_np` com `RENAME_EXCL` no Mac), pelo `rustix`, que já entrava no
+  projeto pelo `tempfile`. Ela é a única dependência nova, e só do
+  `workspace`. Sem ela, renomear uma pasta por cima de uma pasta vazia
+  apagaria a vazia sem erro. Num sistema de arquivos que não sabe recusar
+  (alguns de rede), o `workspace` confere antes e troca depois; a janela
+  entre os dois é de microssegundos. No Mac, trocar só maiúscula por
+  minúscula é o mesmo arquivo para o disco, e passa.
+- **O app lembra os livros já abertos** num arquivo de texto da pasta de
+  dados dele (`livros.txt`, um caminho por linha, o mais recente em cima),
+  pela `SaidaPendente`, até 50. O `ultimo-livro.txt` de antes é lido quando
+  o novo ainda não existe, e não é apagado. Livro cuja pasta sumiu sai da
+  lista sozinho.
+- **Trocar de livro é pelo nome do livro, no alto da lateral:** ele abre a
+  lista dos lembrados, com "Novo livro…", "Abrir outra pasta…" e "Renomear
+  este livro…". O que está digitado é salvo antes de trocar.
+- **A página manda um caminho, mas só um que o Rust deu.** Para abrir ou
+  tirar um livro da lista, ela devolve o caminho que recebeu na lista, e o
+  Rust só aceita se ele estiver no `livros.txt`. Caminho novo continua
+  vindo só do seletor do sistema ou da linha de comando.
+- **"Novo livro…" cria uma pasta vazia.** O autor digita o nome na lateral e
+  escolhe no seletor do sistema onde ela fica; a pasta nasce sem capítulo e
+  sem estilo, e abre.
+- **Tirar da lista não apaga nada.** O livro aberto não pode ser tirado.
+- **O que o app lembra de cada livro vai junto no renomear:** onde o autor
+  parou e a conta de hoje mudam para a pasta nova.
+- **Custo aceito:** renomear a pasta de um livro aberto em outro programa
+  (o Zettlr, o terminal) faz esse programa perder o livro; o app não tem
+  como saber. E o Dropbox sincroniza a pasta renomeada como pasta nova.
+  Um livro aberto por um link simbólico é aberto pela pasta real (o app
+  resolve o caminho ao abrir): renomeá-lo renomeia a pasta real, e o link
+  fica apontando para o nome velho.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -470,7 +523,11 @@ entre os parágrafos", que era a linha em branco do Markdown.
 | Aspas e travessão | `app/src/tipografia.test.ts` | `make check` | uma aspa abre onde devia fechar, dois hifens não viram travessão, ou algo é trocado numa linha `:::`, em código em linha ou em tabela |
 | A busca fala português | `app/src/busca.test.ts`, que lê os textos do pacote instalado | `make check` | o `@codemirror/search` tem um texto sem tradução, ou a tradução perde o `$` do número |
 | Escrita na janela de verdade | `app/teste_funcional.py`, passada 9 | à mão, fora do CI | as teclas não viram aspas curvas e travessão, o botão não desliga a troca, Ctrl+F não abre o painel em português ou a busca não seleciona a palavra |
-| O último livro | testes de `app/src-tauri/src/memoria.rs` | `make check` | um registro estragado, relativo, grande demais ou de pasta que sumiu abre alguma coisa, ou sobra temporário na pasta de dados |
+| Os livros lembrados | testes de `app/src-tauri/src/memoria.rs` | `make check` | um registro estragado, relativo, grande demais ou de pasta que sumiu abre alguma coisa, a lista passa de 50 ou repete um livro, o `ultimo-livro.txt` antigo é ignorado, um caminho fora da lista é aceito, ou sobra temporário na pasta de dados |
+| Renomear e criar não passam por cima | `crates/workspace/tests/livro.rs` (`renomear_*`, `criar_livro_*`) | `make check` | renomear capítulo ou livro troca um arquivo ou uma pasta que existe (até vazia, até link), muda um byte do capítulo, aceita nome que sai da pasta, ou criar livro reaproveita uma pasta que existe |
+| A sessão depois de renomear | testes `renomear_*` de `app/src-tauri/src/sessao.rs` | `make check` | depois de renomear, o capítulo não abre ou não salva no lugar novo, ou o nome antigo continua valendo |
+| Só o que o app troca no renomear | `app/src/livros.test.ts` | `make check` | o que o app lembra do livro (onde parou, conta de hoje) não acompanha a pasta nova, ou leva junto a de outro livro |
+| Vários livros na janela de verdade | `app/teste_funcional.py`, passada 15 | à mão, fora do CI | o menu não lista os livros lembrados, renomear capítulo ou livro não muda o disco, trocar de livro não abre o outro, tirar da lista apaga algo, ou o livro novo não nasce vazio |
 | Onde parou e a conta de hoje | `app/src/onde.test.ts` e `app/src/meta.test.ts` | `make check` | um capítulo que sumiu é reaberto, o dia vira e a conta não recomeça, ou uma meta fora da faixa é aceita |
 | A sessão na janela de verdade | `app/teste_funcional.py`, passada 10 | à mão, fora do CI | aberto sem pasta, o app não volta ao último livro, ao capítulo e ao cursor, a conta de hoje ou a meta se perdem, ou aparece arquivo na pasta do livro |
 | Capítulo novo não sai da pasta nem sobrescreve | `crates/workspace/tests/livro.rs` (`criar_capitulo_*`, `nome_de_capitulo_*`) | `make check` | um nome com barra, `..`, ponto no começo ou caractere reservado é aceito, um capítulo que existe é trocado, ou aparece arquivo fora da pasta do livro |

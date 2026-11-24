@@ -18,13 +18,14 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São catorze passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São quinze passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
   guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
   máquina de escrever), a escrita (aspas, travessão, busca), a sessão
   (reabrir onde parou, meta do dia), o capítulo novo, o corretor
   ortográfico, que precisa do `hunspell-pt-br` instalado, o painel de
-  estilo e os parágrafos como no Word. `--passada=N` roda uma só. Ele abre o app num
+  estilo, os parágrafos como no Word e os vários livros (trocar, renomear,
+  criar). `--passada=N` roda uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -44,10 +45,10 @@ comando. ADRs em `docs/adr/`.
 | Onde | Papel | Regra |
 |---|---|---|
 | `crates/estilo` | núcleo: estilo.yaml → CSS + styles.xml | Rust puro. Sem processo, sem rede, sem outro crate do projeto. Dependência nova exige mudar o ADR 0002. |
-| `crates/workspace` | a pasta do livro: listar e ler capítulos, contar palavras e achar o título, e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve arquivo. |
+| `crates/workspace` | a pasta do livro: listar e ler capítulos, contar palavras e achar o título, e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve, renomeia ou cria pasta. Renomear é só por `renomear_sem_sobrescrever` (`saida.rs`). |
 | `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. Grava pelo `workspace`. |
 | `crates/cli` | adaptador fino | Lê argumentos, chama os crates. Sem regra de estilo. |
-| `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho: a pasta vem do seletor do sistema ou da linha de comando, e capítulo só pelo nome da lista. A exceção é o nome de um capítulo novo, que o autor digita e o `workspace` confere (`Livro::criar_capitulo`). |
+| `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho novo: a pasta vem do seletor do sistema ou da linha de comando, um livro já aberto só pelo caminho que está no `livros.txt` (`memoria::lembrado`), e capítulo só pelo nome da lista. A exceção são os nomes que o autor digita (capítulo novo, livro novo, renomear), sempre conferidos pelo `workspace`. |
 | `app/linux` | o instalador do menu de aplicativos (`instalar.sh`, shell POSIX) | Só o `make instalar` e o `make desinstalar` chamam. Escreve três arquivos dentro do `PREFIXO` e mais nenhum, cada um por temporário + rename, os três preparados antes de publicar o primeiro. Nunca toca a pasta do livro. É a única gravação fora do `workspace`. |
 | `app/src` | a interface (TypeScript, CodeMirror 6) | Recebe o CSS pronto do Rust e não define tipografia do texto. O que o `estilo.yaml` ainda não cobre (títulos, marcadores `:::`) fica em `app.css`, com comentário dizendo isso. Regra testável vai em função pura com teste (`*.test.ts`). O tema e a moldura (`app.css`) não mudam a tipografia do texto. Dependência nova entra na lista de `fronteira.test.ts`, com o motivo no ADR 0003. |
 
@@ -80,7 +81,8 @@ comando. ADRs em `docs/adr/`.
   `workspace::Livro::gravar_estilo` (o painel de estilo: recusa se o arquivo
   mudou no disco desde que o painel o leu). O texto vem sempre de
   `Estilo::para_yaml`; a página manda valores de campo, nunca YAML. Capítulo (`.md`) só nasce por
-  `workspace::Livro::criar_capitulo`, vazio e nunca por cima de outro, e só é gravado por
+  `workspace::Livro::criar_capitulo`, vazio e nunca por cima de outro, só muda de nome por
+  `workspace::Livro::renomear_capitulo`, com os mesmos bytes, e só é gravado por
   `workspace::Capitulo::salvar`, que recusa se o arquivo mudou no disco desde
   a leitura e não escreve se o texto é o mesmo. Comando com mais de uma
   saída prepara todas antes de publicar a primeira. A exceção é o
@@ -91,9 +93,12 @@ comando. ADRs em `docs/adr/`.
   que não daria para devolver igual (finais de linha misturados, fora do
   UTF-8) é recusado na leitura, nunca "consertado".
 - O app não cria arquivo na pasta do livro além do que o autor pediu para
-  salvar ou criar (hoje: os capítulos e o `estilo.yaml` do botão). O que o
-  app lembra (último livro, onde parou, palavras de hoje, tema, zoom) fica
-  na pasta de dados dele: o último livro em `memoria.rs`, pela
+  salvar ou criar (hoje: os capítulos e o `estilo.yaml` do botão). Pasta ele
+  só cria (`workspace::criar_livro`, "Novo livro…") e renomeia
+  (`workspace::Livro::renomear`, que muda o nome da pasta e nada dentro
+  dela) a pedido, e nunca por cima de outra. O que o
+  app lembra (os livros abertos, onde parou, palavras de hoje, tema, zoom) fica
+  na pasta de dados dele: os livros em `memoria.rs` (`livros.txt`), pela
   `SaidaPendente`; o resto no armazenamento da janela. Cache e configuração do app, quando existirem, vão fora dela.
 - Limite ou guarda nova (tamanho, faixa, extensão) vem com o teste que
   reprova quando ela é removida.
