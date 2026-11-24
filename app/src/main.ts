@@ -3,6 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { sugestaoDeNome } from "./capitulo.ts";
 import {
   type AcaoDeZoom,
   acaoDaRoda,
@@ -78,6 +79,8 @@ const botaoDaMaquina = elemento<HTMLButtonElement>("maquina");
 const botaoDoZoom = elemento<HTMLButtonElement>("zoom");
 const botaoDasAspas = elemento<HTMLButtonElement>("aspas");
 const botaoDeHoje = elemento<HTMLButtonElement>("hoje");
+const botaoNovoCapitulo = elemento<HTMLButtonElement>("novo-capitulo");
+const campoDoCapituloNovo = elemento<HTMLInputElement>("nome-do-capitulo-novo");
 const campoDaMeta = elemento<HTMLInputElement>("campo-da-meta");
 const avisos = elemento("avisos");
 const vazio = elemento("vazio");
@@ -482,6 +485,56 @@ campoDaMeta.addEventListener("keydown", (evento) => {
   editor.focar();
 });
 
+// ---- Capítulo novo ----
+
+function fecharCampoDoCapituloNovo(): void {
+  campoDoCapituloNovo.hidden = true;
+  botaoNovoCapitulo.hidden = pastaDoLivro === null;
+}
+
+/** O Rust confere o nome e cria o arquivo vazio; aqui a lista ganha o
+ *  capítulo e ele abre. O que está digitado no capítulo atual é salvo antes. */
+let criandoCapitulo = false;
+async function criarCapitulo(nome: string): Promise<void> {
+  // Um segundo Enter antes da resposta daria "já existe" sem motivo.
+  if (criandoCapitulo) return;
+  criandoCapitulo = true;
+  try {
+    if (!(await gravador.salvarAgora())) {
+      avisoDeGravacao ??= avisarDaGravacao(TEXTO_NAO_SALVO);
+      return;
+    }
+    const criado = await invoke<{ nome: string; livro: LivroAberto }>("criar_capitulo", { nome });
+    fecharCampoDoCapituloNovo();
+    capitulos = criado.livro.capitulos;
+    desenharLista();
+    await abrirCapitulo(criado.nome);
+    registrar(`capítulo criado: ${criado.nome}`);
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+  } finally {
+    criandoCapitulo = false;
+  }
+}
+
+botaoNovoCapitulo.addEventListener("click", () => {
+  campoDoCapituloNovo.value = sugestaoDeNome(capitulos.map((capitulo) => capitulo.nome));
+  campoDoCapituloNovo.hidden = false;
+  botaoNovoCapitulo.hidden = true;
+  campoDoCapituloNovo.focus();
+  const fim = campoDoCapituloNovo.value.length;
+  campoDoCapituloNovo.setSelectionRange(fim, fim);
+});
+campoDoCapituloNovo.addEventListener("blur", fecharCampoDoCapituloNovo);
+campoDoCapituloNovo.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape") {
+    fecharCampoDoCapituloNovo();
+    editor.focar();
+  } else if (evento.key === "Enter") {
+    void criarCapitulo(campoDoCapituloNovo.value);
+  }
+});
+
 const ROTULO_DE_CRIAR_O_ESTILO = "Criar estilo.yaml";
 
 /** O botão do aviso da pasta sem estilo: o Rust grava o modelo na pasta do
@@ -515,6 +568,7 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
   capitulos = livro.capitulos;
   pastaDoLivro = livro.pasta;
   hoje = null;
+  fecharCampoDoCapituloNovo();
   nomeDoLivro.textContent = livro.nome;
   nomeDoLivro.title = livro.pasta;
   avisos.replaceChildren();
@@ -603,6 +657,7 @@ async function diagnosticar(): Promise<void> {
     }
     if (roteiro.escrita) await roteiroDaEscrita();
     if (roteiro.sessao) await roteiroDaSessao();
+    if (roteiro.capitulo_novo) await roteiroDoCapituloNovo();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -626,6 +681,29 @@ async function diagnosticar(): Promise<void> {
     // De volta ao começo do capítulo, que é o que a captura do teste mostra.
     editor.view.scrollDOM.scrollTop = 0;
   }
+}
+
+/** Cria um capítulo pelo botão e pelo campo da lateral, e tenta de novo com
+ *  o mesmo nome. */
+async function roteiroDoCapituloNovo(): Promise<void> {
+  const espera = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  const enter = () =>
+    campoDoCapituloNovo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  botaoNovoCapitulo.click();
+  const sugestao = campoDoCapituloNovo.value;
+  campoDoCapituloNovo.value = `${sugestao}o-rio`;
+  enter();
+  const esperado = `${sugestao}o-rio.md`;
+  for (let vez = 0; vez < 100 && capituloAtual !== esperado; vez += 1) await espera(50);
+  registrar(
+    `capítulo novo: sugestão="${sugestao}" atual=${capituloAtual} lista=${capitulos.map((capitulo) => capitulo.nome).join(",")} letras=${editor.texto().length} campo=${campoDoCapituloNovo.hidden ? "fechado" : "aberto"}`,
+  );
+  botaoNovoCapitulo.click();
+  campoDoCapituloNovo.value = `${sugestao}o-rio`;
+  enter();
+  await espera(400);
+  const erros = [...avisos.querySelectorAll("p.erro span")].map((aviso) => aviso.textContent).join(" | ");
+  registrar(`capítulo repetido: ${erros} lista=${capitulos.length}`);
 }
 
 /** Define a meta pelo campo, troca de capítulo pelo clique na lateral e
@@ -742,6 +820,7 @@ interface RoteiroDeTeste {
   conforto: boolean;
   escrita: boolean;
   sessao: boolean;
+  capitulo_novo: boolean;
 }
 
 /** As contagens como estão escritas na tela. */

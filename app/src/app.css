@@ -93,7 +93,12 @@ button:focus-visible { outline: 2px solid var(--destaque); outline-offset: 1px; 
 #capitulos .arquivo { grid-column: 1 / -1; font-size: 11px; color: var(--tinta-fraca); overflow-wrap: anywhere; }
 #capitulos .arquivo:empty { display: none; }
 
-#lateral footer { padding: 10px 12px; border-top: 1px solid var(--borda); }
+#lateral footer { padding: 10px 12px; border-top: 1px solid var(--borda); display: flex; flex-direction: column; gap: 6px; }
+#lateral footer [hidden] { display: none; }
+#nome-do-capitulo-novo {
+  font: inherit; color: var(--tinta); background: var(--papel);
+  border: 1px solid var(--destaque); border-radius: 6px; padding: 5px 9px; min-width: 0;
+}
 #lateral footer button { width: 100%; }
 
 /* ---- Coluna principal: barra, avisos, mesa e barra de status ---- */

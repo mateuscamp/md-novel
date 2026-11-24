@@ -4,15 +4,15 @@ chegou ao disco e o que o navegador aplicou.
 
 Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
 
-`--passada=N` roda só a passada N (de 1 a 10), para conferir uma mudança sem
-esperar as outras; dizer que a interface funciona pede as dez.
+`--passada=N` roda só a passada N (de 1 a 11), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as onze.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
 gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
 passadas 4 e 5 gravam ao lado dele `<nome>-escuro.png` e `<nome>-foco.png`.
 
-Dez passadas:
+Onze passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -33,6 +33,8 @@ Dez passadas:
 10. sessão: define a meta do dia, troca de capítulo e fecha; aberto de novo
     sem dizer a pasta, o app volta ao mesmo livro, capítulo e cursor, com a
     conta de palavras de hoje.
+11. capítulo novo: o botão da lateral sugere o próximo número, cria o
+    arquivo vazio e abre nele; o mesmo nome de novo é recusado.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -162,6 +164,7 @@ class App:
         conforto: bool = False,
         escrita: bool = False,
         sessao: bool = False,
+        capitulo_novo: bool = False,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -193,6 +196,8 @@ class App:
             ambiente["MD_NOVEL_TESTE_ESCRITA"] = "1"
         if sessao:
             ambiente["MD_NOVEL_TESTE_SESSAO"] = "1"
+        if capitulo_novo:
+            ambiente["MD_NOVEL_TESTE_CAPITULO_NOVO"] = "1"
         self.processo = subprocess.Popen(
             # Sem pasta: o app abre o último livro, como pelo menu.
             [binario] if pasta is None else [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
@@ -654,6 +659,42 @@ def passada_da_sessao(binario: str, falhas: list[str]) -> None:
             falhas.append(f"passada 10: arquivos na pasta do livro: {sobras}")
 
 
+def passada_do_capitulo_novo(binario: str, falhas: list[str]) -> None:
+    print("passada 11: criar um capítulo pelo botão da lateral")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
+        pasta = pathlib.Path(temporaria)
+        original = montar_livro(pasta)
+        estilo = (pasta / "estilo.yaml").read_bytes()
+        app = App(binario, pasta, capitulo_novo=True)
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 11: a interface não chegou ao fim do roteiro")
+                return
+        finally:
+            app.encerrar()
+        novo = app.linha_com("capítulo novo:")
+        esperado = (
+            'sugestão="03-" atual=03-o-rio.md '
+            "lista=01-abertura.md,02-a-casa.md,03-o-rio.md letras=0 campo=fechado"
+        )
+        if esperado not in novo:
+            falhas.append(f"passada 11: o capítulo não foi criado, listado e aberto: {novo!r}")
+        repetido = app.linha_com("capítulo repetido:")
+        if "já existe" not in repetido or "lista=3" not in repetido:
+            falhas.append(f"passada 11: o mesmo nome de novo não foi recusado: {repetido!r}")
+        criado = pasta / "03-o-rio.md"
+        if not criado.is_file() or criado.read_bytes() != b"":
+            falhas.append("passada 11: o arquivo do capítulo novo não está vazio na pasta do livro")
+        # Trocar de capítulo salvou a frase digitada no primeiro; o resto fica como estava.
+        if (pasta / "01-abertura.md").read_bytes() != original + FRASE.encode():
+            falhas.append("passada 11: a frase digitada no primeiro capítulo não foi salva antes de criar o novo")
+        if (pasta / "02-a-casa.md").read_bytes() != SEGUNDO_CAPITULO or (pasta / "estilo.yaml").read_bytes() != estilo:
+            falhas.append("passada 11: o segundo capítulo ou o estilo mudou")
+        sobras = sorted(entrada.name for entrada in pasta.iterdir())
+        if sobras != ["01-abertura.md", "02-a-casa.md", "03-o-rio.md", "estilo.yaml"]:
+            falhas.append(f"passada 11: arquivos na pasta do livro: {sobras}")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -683,11 +724,11 @@ def principal() -> int:
     argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
     so_a_passada = None
     for opcao in opcoes:
-        escolhida = re.fullmatch(r"--passada=([1-9]|10)", opcao)
+        escolhida = re.fullmatch(r"--passada=([1-9]|1[01])", opcao)
         if escolhida is not None:
             so_a_passada = int(escolhida[1])
         elif opcao != "--na-tela":
-            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 10")
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 11")
             return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
@@ -712,6 +753,7 @@ def principal() -> int:
         lambda: passada_do_conforto(binario, falhas),
         lambda: passada_da_escrita(binario, falhas),
         lambda: passada_da_sessao(binario, falhas),
+        lambda: passada_do_capitulo_novo(binario, falhas),
     ]
     for numero, passada in enumerate(passadas, start=1):
         if so_a_passada is None or so_a_passada == numero:

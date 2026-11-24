@@ -451,3 +451,112 @@ fn criar_estilo_nao_segue_link_nem_troca_o_link() {
     ));
     assert_eq!(nomes(pasta.path()), ["01.md", "estilo.yaml"]);
 }
+
+// Criar um capítulo pelo app (ADR 0003, "Capítulo novo pelo app"): o autor dá
+// o nome, e o arquivo nasce vazio. O que já existe nunca é trocado.
+#[test]
+fn criar_capitulo_cria_um_md_vazio_com_o_nome_dado_e_ele_entra_na_lista() {
+    let pasta = pasta_com(&[("01-abertura.md", b"um")]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+
+    assert_eq!(
+        livro.criar_capitulo("02-a-casa").expect("criar"),
+        "02-a-casa.md"
+    );
+    // Com a extensão digitada, com espaços em volta e com acento: vale igual.
+    assert_eq!(
+        livro.criar_capitulo("  03-o-rio.MD ").expect("criar"),
+        "03-o-rio.md"
+    );
+    assert_eq!(
+        livro.criar_capitulo("04 São João").expect("criar"),
+        "04 São João.md"
+    );
+
+    assert_eq!(
+        fs::read(pasta.path().join("02-a-casa.md")).expect("ler"),
+        b""
+    );
+    assert_eq!(
+        nomes(pasta.path()),
+        [
+            "01-abertura.md",
+            "02-a-casa.md",
+            "03-o-rio.md",
+            "04 São João.md"
+        ]
+    );
+    assert_eq!(
+        livro.capitulos().expect("listar"),
+        nomes(pasta.path()),
+        "o capítulo novo é um capítulo como os outros"
+    );
+    // E abre e salva como qualquer capítulo.
+    let mut novo = livro.ler_capitulo("02-a-casa.md").expect("ler o novo");
+    assert_eq!(
+        novo.salvar("# A casa\n").expect("salvar"),
+        Gravacao::Gravado
+    );
+}
+
+#[test]
+fn criar_capitulo_nunca_grava_por_cima_do_que_ja_existe() {
+    let pasta = pasta_com(&[("01.md", b"texto do autor")]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+    for nome in ["01", "01.md"] {
+        let erro = livro.criar_capitulo(nome).expect_err("já existe");
+        assert!(
+            matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido.ends_with("01.md")),
+            "{erro:?}"
+        );
+    }
+    assert_eq!(
+        fs::read(pasta.path().join("01.md")).expect("ler"),
+        b"texto do autor"
+    );
+    assert_eq!(nomes(pasta.path()), ["01.md"]);
+}
+
+#[test]
+fn nome_de_capitulo_que_sai_da_pasta_ou_nao_serve_de_arquivo_e_recusado() {
+    let base = pasta_com(&[]);
+    fs::create_dir(base.path().join("livro")).expect("criar a pasta do livro");
+    let livro = Livro::abrir(&base.path().join("livro")).expect("abrir");
+    let longo = "a".repeat(101);
+    let recusados = [
+        "",
+        "   ",
+        ".md",
+        "../fora",
+        "sub/capitulo",
+        "sub\\capitulo",
+        "..",
+        ".oculto",
+        ".md-novel-gravando-x",
+        "com\nquebra",
+        "com\ttabulacao",
+        "dois:pontos",
+        "per?gunta",
+        "aste*risco",
+        "as\"pas",
+        "me<nor",
+        "bar|ra",
+        "fim com ponto.",
+        longo.as_str(),
+    ];
+    for nome in recusados {
+        let erro = livro.criar_capitulo(nome).expect_err(nome);
+        assert!(
+            matches!(erro, ErroWorkspace::NomeDeCapituloInvalido { .. }),
+            "{nome:?}: {erro:?}"
+        );
+        let mensagem = erro.to_string();
+        assert!(
+            mensagem.contains("03-a-casa"),
+            "falta o exemplo: {mensagem}"
+        );
+    }
+    // Nada dentro do livro, nada fora dele.
+    assert_eq!(nomes(&base.path().join("livro")), Vec::<String>::new());
+    assert_eq!(nomes(base.path()), ["livro"]);
+}

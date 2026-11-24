@@ -105,6 +105,9 @@ O que ele faz hoje:
   O botão ☰, ou F9, esconde a lateral. "Máquina", ou F10, liga a máquina de
   escrever: a linha em que você escreve fica no meio da tela. F11 é tela
   cheia. Zoom, lateral e máquina de escrever ficam guardados.
+- "Novo capítulo…", na lateral, cria um capítulo vazio na pasta do livro e
+  já sugere o próximo número. Renomear, apagar e reordenar continuam sendo
+  feitos na pasta.
 - Aberto pelo menu, o programa volta ao último livro, no capítulo e na linha
   em que você parou.
 - A barra de baixo mostra as palavras escritas hoje no livro. Clique nelas

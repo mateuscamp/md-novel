@@ -47,9 +47,14 @@ pub enum ErroWorkspace {
     MudouPorFora { caminho: PathBuf },
 
     #[error(
-        "{recebido:?} já existe; nada foi gravado por cima. Para começar do modelo, renomeie ou apague o arquivo antes"
+        "{recebido:?} já existe; nada foi gravado por cima. Escolha outro nome, ou renomeie antes o arquivo que está lá"
     )]
     JaExiste { recebido: PathBuf },
+
+    #[error(
+        "o nome de capítulo {recebido:?} não serve: use letras, números, espaços e hifens, com até 100 caracteres, sem barra, sem dois-pontos e sem começar ou terminar com ponto; por exemplo, 03-a-casa"
+    )]
+    NomeDeCapituloInvalido { recebido: String },
 
     #[error("erro de leitura ou escrita: {0}")]
     Io(#[from] std::io::Error),
