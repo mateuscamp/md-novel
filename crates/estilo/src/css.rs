@@ -84,6 +84,9 @@ pub fn gerar_css(estilo: &Estilo, seletor_corpo: &SeletorCss) -> String {
     css
 }
 
+/// O zoom do editor, lido no próprio CSS.
+const ZOOM: &str = "var(--md-novel-zoom, 1)";
+
 fn escrever_regra(css: &mut String, seletor: &str, paragrafo: &EstiloParagrafo) {
     // Sem `..`: propriedade nova quebra a compilação aqui até ser traduzida.
     let EstiloParagrafo {
@@ -110,17 +113,20 @@ fn escrever_regra(css: &mut String, seletor: &str, paragrafo: &EstiloParagrafo) 
     // --md-novel-linha-simples; sem isso vale 1.2 (ADR 0002).
     // Espaço antes e depois vão em padding, não em margin: margens de blocos
     // vizinhos se fundem no CSS (vale a maior), e o Word soma as duas.
+    // Toda medida é multiplicada por --md-novel-zoom: é o zoom do editor, que
+    // aproxima só o texto (ADR 0003). Sem a variável vale 1; a entrelinha é
+    // múltiplo do tamanho da fonte e acompanha sozinha.
     // Escrever em String não falha, então o resultado do `write!` é descartado.
     let _ = write!(
         css,
         "\n{seletor} {{\n  \
          font-family: \"{fonte}\";\n  \
-         font-size: {tamanho};\n  \
+         font-size: calc({tamanho} * {ZOOM});\n  \
          line-height: calc(var(--md-novel-linha-simples, 1.2) * {entrelinha});\n  \
          text-align: {alinhamento};\n  \
-         text-indent: {recuo_primeira_linha};\n  \
-         padding-top: {espaco_antes};\n  \
-         padding-bottom: {espaco_depois};\n  \
+         text-indent: calc({recuo_primeira_linha} * {ZOOM});\n  \
+         padding-top: calc({espaco_antes} * {ZOOM});\n  \
+         padding-bottom: calc({espaco_depois} * {ZOOM});\n  \
          font-style: {italico};\n  \
          font-weight: {negrito};\n}}\n",
         fonte = fonte.nome(),

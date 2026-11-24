@@ -10,6 +10,7 @@ import {
   type Atalho,
   atalhoDaTecla,
   DESLIGADO,
+  fatorDoZoom,
   LIGADO,
   lerDesligado,
   lerLigado,
@@ -641,9 +642,8 @@ async function diagnosticar(): Promise<void> {
   registrar(`linha do corpo: ${medir(".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)")}`);
   registrar(`linha de estilo nomeado: ${medir(".cm-line[data-md-novel-estilo]")}`);
   registrar(`rolagem: área ${rolagem.clientHeight}px de ${rolagem.scrollHeight}px`);
-  await zoomEmCurso;
   registrar(
-    `conforto ao abrir: zoom=${rotuloDoZoom(zoom)} largura=${window.innerWidth} lateral=${getComputedStyle(elemento("lateral")).display} máquina=${maquinaLigada() ? "ligada" : "desligada"}`,
+    `conforto ao abrir: zoom=${rotuloDoZoom(zoom)} ${medidasDoZoom()} lateral=${getComputedStyle(elemento("lateral")).display} máquina=${maquinaLigada() ? "ligada" : "desligada"}`,
   );
   const corretor = await estadoDoCorretor;
   registrar(`corretor: línguas=${corretor.linguas.join(",")} aviso=${corretor.aviso === null ? "não" : "sim"}`);
@@ -810,6 +810,16 @@ async function roteiroDaEscrita(): Promise<void> {
   registrar(`tipografia: em código fim=[${editor.texto().slice(-6)}]`);
 }
 
+/** O que o zoom muda (o texto e a folha) e o que não muda (a moldura). */
+function medidasDoZoom(): string {
+  const linha = editor.view.contentDOM.querySelector(
+    ".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)",
+  );
+  const texto = linha === null ? "ausente" : getComputedStyle(linha).fontSize;
+  const folhaLarga = Math.round(editor.view.contentDOM.getBoundingClientRect().width);
+  return `texto=${texto} folha=${folhaLarga}px moldura=${getComputedStyle(nomeDoLivro).fontSize} janela=${window.innerWidth}px`;
+}
+
 /** As teclas e a rolagem do autor, como eventos de verdade na janela, e o
  *  que a tela mostra depois de cada uma. */
 async function roteiroDoConforto(): Promise<void> {
@@ -823,14 +833,14 @@ async function roteiroDoConforto(): Promise<void> {
     if (cursor === null) return "sem cursor";
     return `${Math.round(Math.abs((cursor.top + cursor.bottom) / 2 - (area.top + area.bottom) / 2))}px de ${Math.round(area.height)}px`;
   };
-  const larguraAntes = window.innerWidth;
+  const antesDoZoom = medidasDoZoom();
   tecla("=", true);
   tecla("=", true);
   // Mais velho que o intervalo da roda: o primeiro evento sempre vale.
   window.dispatchEvent(new WheelEvent("wheel", { deltaY: 120, ctrlKey: true, bubbles: true, cancelable: true }));
-  await zoomEmCurso;
   await quadro();
-  registrar(`zoom: botão="${botaoDoZoom.textContent}" largura ${larguraAntes} -> ${window.innerWidth}`);
+  await quadro();
+  registrar(`zoom: botão="${botaoDoZoom.textContent}" antes[${antesDoZoom}] depois[${medidasDoZoom()}]`);
   tecla("F9");
   registrar(`lateral: ${getComputedStyle(elemento("lateral")).display} apertado=${botaoDaLateral.getAttribute("aria-pressed")}`);
   await quadro();
@@ -945,16 +955,14 @@ function guardar(chave: string, valor: string): void {
 }
 
 let zoom = lerZoom(guardado(CHAVE_DO_ZOOM));
-/** O pedido de zoom em curso, para o teste funcional esperar por ele. */
-let zoomEmCurso: Promise<void> = Promise.resolve();
 
-/** O zoom é da janela inteira, como o de um navegador: quem aplica é o Rust. */
+/** O zoom é só do texto: o CSS do livro e a folha multiplicam as medidas por
+ *  `--md-novel-zoom`. A lateral e as barras ficam do tamanho de sempre. */
 function aplicarZoom(): void {
   botaoDoZoom.textContent = rotuloDoZoom(zoom);
-  zoomEmCurso = invoke("definir_zoom", { porCento: zoom }).then(
-    () => undefined,
-    (motivo: unknown) => void avisar(comoErro(motivo).mensagem, "erro"),
-  );
+  document.documentElement.style.setProperty("--md-novel-zoom", fatorDoZoom(zoom));
+  // As linhas mudaram de altura.
+  editor.view.requestMeasure();
 }
 
 function mudarZoom(acao: AcaoDeZoom): void {

@@ -26,7 +26,8 @@ Doze passadas:
 6. a escolha de tema fica guardada: clica no botão, fecha, abre de novo.
 7. criar o estilo.yaml: numa pasta sem ele, o botão do aviso grava o modelo,
    a tela passa a usá-lo e o que foi digitado não se perde.
-8. conforto: Ctrl+= e Ctrl+rolagem mudam o zoom da janela, F9 esconde a
+8. conforto: Ctrl+= e Ctrl+rolagem aproximam o texto e a folha, sem mexer na
+   lateral nem nas barras, F9 esconde a
    lateral, F10 leva a linha do cursor para o meio; ao abrir de novo, as
    três escolhas voltam.
 9. escrita: aspas e hifens digitados viram aspas curvas e travessão, o botão
@@ -546,6 +547,11 @@ def passada_de_criar_o_estilo(binario: str, falhas: list[str]) -> None:
         conferir_disco(pasta, original, falhas, "passada 7")
 
 
+# O que o roteiro do conforto mede: o tamanho do texto, a largura da folha, o
+# tamanho da letra da lateral e a largura da janela.
+MEDIDAS_DO_ZOOM = re.compile(r"texto=([\d.]+)px folha=(\d+)px moldura=([\d.]+px) janela=(\d+)px")
+
+
 def passada_do_conforto(binario: str, falhas: list[str]) -> None:
     print("passada 8: zoom, lateral e máquina de escrever, e as escolhas guardadas")
     with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria, tempfile.TemporaryDirectory(
@@ -571,9 +577,16 @@ def passada_do_conforto(binario: str, falhas: list[str]) -> None:
             falhas.append(f"passada 8: a janela nova não abriu no padrão: {abertura!r}")
         # Dois Ctrl+= e uma rolagem para baixo: 100, 110, 120, 110.
         zoom = app.linha_com("zoom:")
-        larguras = re.search(r"largura (\d+) -> (\d+)", zoom)
-        if 'botão="110%"' not in zoom or larguras is None or not int(larguras[2]) < int(larguras[1]):
-            falhas.append(f"passada 8: o zoom não chegou a 110% ou a janela não aproximou: {zoom!r}")
+        medidas = MEDIDAS_DO_ZOOM.findall(zoom)
+        if 'botão="110%"' not in zoom or len(medidas) != 2:
+            falhas.append(f"passada 8: o zoom não chegou a 110%: {zoom!r}")
+        else:
+            (texto, folha, moldura, janela), (texto_perto, folha_perto, moldura_perto, janela_perto) = medidas
+            # Só o texto e a folha crescem; a moldura e a janela ficam como estavam.
+            if abs(float(texto_perto) - float(texto) * 1.1) > 0.05 or not int(folha_perto) > int(folha):
+                falhas.append(f"passada 8: o texto e a folha não aproximaram 10%: {zoom!r}")
+            if moldura_perto != moldura or janela_perto != janela:
+                falhas.append(f"passada 8: o zoom mexeu na moldura ou na janela, e é só do texto: {zoom!r}")
         if "lateral: none apertado=true" not in app.linha_com("lateral:"):
             falhas.append(f"passada 8: F9 não escondeu a lateral: {app.linha_com('lateral:')!r}")
         maquina = app.linha_com("máquina:")
@@ -596,8 +609,8 @@ def passada_do_conforto(binario: str, falhas: list[str]) -> None:
         abertura = app.linha_com("conforto ao abrir:")
         if "zoom=110%" not in abertura or "lateral=none" not in abertura or "máquina=ligada" not in abertura:
             falhas.append(f"passada 8: as escolhas não ficaram guardadas: {abertura!r}")
-        reaberta = re.search(r"largura=(\d+)", abertura)
-        if larguras is not None and (reaberta is None or int(reaberta[1]) != int(larguras[2])):
+        reaberta = MEDIDAS_DO_ZOOM.findall(abertura)
+        if len(medidas) == 2 and (len(reaberta) != 1 or reaberta[0][0] != medidas[1][0]):
             falhas.append(f"passada 8: o zoom guardado não foi aplicado ao abrir: {abertura!r}")
 
 
