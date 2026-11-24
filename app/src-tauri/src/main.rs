@@ -3,9 +3,10 @@
 
 mod exportacao;
 mod janela;
+mod memoria;
 mod sessao;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -85,7 +86,44 @@ fn escolher_pasta(
         codigo: "erro",
         mensagem: format!("a pasta escolhida não é um caminho deste computador: {erro}"),
     })?;
-    estado.sessao().abrir_pasta(&pasta).map(Some)
+    let livro = estado.sessao().abrir_pasta(&pasta)?;
+    lembrar(&app, Path::new(&livro.pasta));
+    Ok(Some(livro))
+}
+
+/// Guarda o livro aberto como o último, para a próxima abertura do app.
+/// Não conseguir guardar não atrapalha o trabalho: só fica o aviso no terminal.
+fn lembrar(app: &AppHandle, pasta: &Path) {
+    let Ok(dados) = app.path().app_data_dir() else {
+        return;
+    };
+    if let Err(erro) = memoria::guardar_ultimo_livro(&dados, pasta) {
+        eprintln!("aviso: não consegui guardar o último livro aberto: {erro}");
+    }
+}
+
+/// Ao abrir o app: o livro da linha de comando (`md-novel-app <pasta>`) ou,
+/// sem ela, o último que o autor abriu. Se o último sumiu (pasta apagada,
+/// disco fora), o app abre sem livro, como na primeira vez.
+fn abrir_o_livro_inicial(app: &AppHandle) {
+    let pedida = std::env::args_os().nth(1).map(PathBuf::from);
+    let lembrada = || {
+        let dados = app.path().app_data_dir().ok()?;
+        memoria::ler_ultimo_livro(&dados)
+    };
+    let foi_pedida = pedida.is_some();
+    let Some(pasta) = pedida.or_else(lembrada) else {
+        return;
+    };
+    let aberto = app.state::<Estado>().sessao().abrir_pasta(&pasta);
+    match aberto {
+        Ok(livro) => lembrar(app, Path::new(&livro.pasta)),
+        Err(erro) => {
+            if foi_pedida {
+                eprintln!("erro: {}", erro.mensagem);
+            }
+        }
+    }
 }
 
 /// Exporta o livro aberto para .docx. O destino vem do seletor de "salvar
@@ -173,6 +211,8 @@ struct RoteiroDeTeste {
     conforto: bool,
     /// Digitar aspas e hifens e abrir a busca.
     escrita: bool,
+    /// Definir a meta do dia, trocar de capítulo e mover o cursor.
+    sessao: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -194,6 +234,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         criar_estilo: std::env::var_os("MD_NOVEL_TESTE_CRIAR_ESTILO").is_some(),
         conforto: std::env::var_os("MD_NOVEL_TESTE_CONFORTO").is_some(),
         escrita: std::env::var_os("MD_NOVEL_TESTE_ESCRITA").is_some(),
+        sessao: std::env::var_os("MD_NOVEL_TESTE_SESSAO").is_some(),
     })
 }
 
@@ -242,16 +283,14 @@ fn ao_pedir_para_fechar(janela: &Window, evento: &WindowEvent) {
 }
 
 fn main() {
-    let estado = Estado::default();
-    // `md-novel-app <pasta>` abre direto o livro daquela pasta.
-    if let Some(pasta) = std::env::args_os().nth(1).map(PathBuf::from) {
-        if let Err(erro) = estado.sessao().abrir_pasta(&pasta) {
-            eprintln!("erro: {}", erro.mensagem);
-        }
-    }
     let resultado = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(estado)
+        .manage(Estado::default())
+        // Antes de a página carregar: quando ela pedir o livro, ele já está aberto.
+        .setup(|app| {
+            abrir_o_livro_inicial(app.handle());
+            Ok(())
+        })
         .on_window_event(ao_pedir_para_fechar)
         .invoke_handler(tauri::generate_handler![
             livro_atual,

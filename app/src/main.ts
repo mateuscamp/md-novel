@@ -20,6 +20,8 @@ import { criarEditor } from "./editor.ts";
 import { teclaDoFoco } from "./foco.ts";
 import { fonteInstalada, linhaSimples } from "./fonte.ts";
 import { type Estado, Gravador } from "./gravador.ts";
+import { diaDe, escreverHoje, lerHoje, lerMeta, META_MAXIMA, rotuloDeHoje } from "./meta.ts";
+import { escreverOnde, lerOnde } from "./onde.ts";
 import {
   type CapituloNaLista,
   comTextoAoVivo,
@@ -75,6 +77,8 @@ const botaoDaLateral = elemento<HTMLButtonElement>("alternar-lateral");
 const botaoDaMaquina = elemento<HTMLButtonElement>("maquina");
 const botaoDoZoom = elemento<HTMLButtonElement>("zoom");
 const botaoDasAspas = elemento<HTMLButtonElement>("aspas");
+const botaoDeHoje = elemento<HTMLButtonElement>("hoje");
+const campoDaMeta = elemento<HTMLInputElement>("campo-da-meta");
 const avisos = elemento("avisos");
 const vazio = elemento("vazio");
 const textoDoVazio = elemento("texto-do-vazio");
@@ -148,7 +152,10 @@ const editor = criarEditor(folha, {
     agendarContagem();
   },
   aoSalvar: () => void gravador.salvarAgora(),
-  aoSelecionar: mostrarSelecao,
+  aoSelecionar: () => {
+    mostrarSelecao();
+    agendarOnde();
+  },
   maquinaDeEscrever: () => maquinaLigada(),
   tipografia: () => tipografiaLigada(),
 });
@@ -214,6 +221,7 @@ function mostrarContagem(): void {
       ? ""
       : `${numero(capitulos.length)} ${capitulos.length === 1 ? "capítulo" : "capítulos"} · ${rotuloDePalavras(total)}`;
   palavrasDoLivro.textContent = capitulos.length === 0 ? "" : `Livro: ${rotuloDePalavras(total)}`;
+  mostrarHoje(total);
   if (aberto === undefined) {
     nomeDoCapitulo.textContent = "";
     arquivoDoCapitulo.textContent = "";
@@ -343,6 +351,7 @@ async function abrirCapitulo(nome: string, descartarMudancas = false): Promise<v
     folha.hidden = false;
     editor.focar();
     registrar(`capítulo: ${nome}, ${editor.view.state.doc.lines} linhas`);
+    guardarOnde();
   } catch (motivo) {
     avisar(comoErro(motivo).mensagem, "erro");
   }
@@ -397,6 +406,82 @@ function aplicarEstilo(livro: LivroAberto): void {
   }
 }
 
+// ---- A sessão de escrita: onde parou, e as palavras de hoje ----
+
+// Como o tema, ficam no armazenamento da janela, fora da pasta do livro:
+// um registro por livro, com o caminho da pasta (que veio do Rust) na chave.
+/** A pasta do livro aberto, como o Rust a mostrou. */
+let pastaDoLivro: string | null = null;
+const chaveDeOnde = (pasta: string) => `md-novel.onde:${pasta}`;
+const chaveDeHoje = (pasta: string) => `md-novel.hoje:${pasta}`;
+const CHAVE_DA_META = "md-novel.meta";
+
+function guardarOnde(): void {
+  if (pastaDoLivro === null || capituloAtual === null) return;
+  guardar(chaveDeOnde(pastaDoLivro), escreverOnde(capituloAtual, editor.posicao()));
+}
+
+/** Andar com o cursor não grava a cada tecla: grava quando ele sossega. */
+const ESPERA_PARA_GUARDAR_ONDE_MS = 400;
+let ondeAgendado: number | undefined;
+function agendarOnde(): void {
+  window.clearTimeout(ondeAgendado);
+  ondeAgendado = window.setTimeout(guardarOnde, ESPERA_PARA_GUARDAR_ONDE_MS);
+}
+
+let meta = lerMeta(guardado(CHAVE_DA_META));
+/** O dia da conta e o total de palavras do livro quando esse dia começou. */
+let hoje: { dia: string; base: number } | null = null;
+
+function mostrarHoje(total: number): void {
+  if (pastaDoLivro === null || capitulos.length === 0) {
+    botaoDeHoje.hidden = true;
+    return;
+  }
+  const dia = diaDe(new Date());
+  // Livro recém-aberto, ou virou a meia-noite com a janela aberta.
+  if (hoje === null || hoje.dia !== dia) {
+    hoje = { dia, base: lerHoje(guardado(chaveDeHoje(pastaDoLivro)), dia, total) };
+    guardar(chaveDeHoje(pastaDoLivro), escreverHoje(hoje.dia, hoje.base));
+  }
+  botaoDeHoje.textContent = rotuloDeHoje(total - hoje.base, meta);
+  botaoDeHoje.hidden = !campoDaMeta.hidden;
+}
+
+function fecharCampoDaMeta(): void {
+  campoDaMeta.hidden = true;
+  botaoDeHoje.hidden = pastaDoLivro === null || capitulos.length === 0;
+}
+
+botaoDeHoje.addEventListener("click", () => {
+  campoDaMeta.value = meta === null ? "" : String(meta);
+  campoDaMeta.hidden = false;
+  botaoDeHoje.hidden = true;
+  campoDaMeta.focus();
+  campoDaMeta.select();
+});
+campoDaMeta.addEventListener("blur", fecharCampoDaMeta);
+campoDaMeta.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape") {
+    fecharCampoDaMeta();
+    editor.focar();
+    return;
+  }
+  if (evento.key !== "Enter") return;
+  const digitada = campoDaMeta.value.trim();
+  const nova = lerMeta(digitada);
+  // Campo vazio tira a meta; o que não é um número da faixa fica para corrigir.
+  if (digitada !== "" && nova === null) {
+    avisar(`A meta precisa ser um número de palavras de 1 a ${numero(META_MAXIMA)}; recebi "${digitada}".`, "erro");
+    return;
+  }
+  meta = nova;
+  guardar(CHAVE_DA_META, nova === null ? "" : String(nova));
+  fecharCampoDaMeta();
+  mostrarContagem();
+  editor.focar();
+});
+
 const ROTULO_DE_CRIAR_O_ESTILO = "Criar estilo.yaml";
 
 /** O botão do aviso da pasta sem estilo: o Rust grava o modelo na pasta do
@@ -428,6 +513,8 @@ async function criarEstilo(): Promise<void> {
 async function mostrarLivro(livro: LivroAberto): Promise<void> {
   capituloAtual = null;
   capitulos = livro.capitulos;
+  pastaDoLivro = livro.pasta;
+  hoje = null;
   nomeDoLivro.textContent = livro.nome;
   nomeDoLivro.title = livro.pasta;
   avisos.replaceChildren();
@@ -454,7 +541,18 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
     textoDoVazio.textContent = "Esta pasta ainda não tem capítulos (.md).";
     return;
   }
-  await abrirCapitulo(primeiro.nome, true);
+  // Reabre onde o autor parou neste livro, se o capítulo ainda existe.
+  const onde = lerOnde(
+    guardado(chaveDeOnde(livro.pasta)),
+    livro.capitulos.map((capitulo) => capitulo.nome),
+  );
+  await abrirCapitulo(onde?.capitulo ?? primeiro.nome, true);
+  if (onde !== null && capituloAtual === onde.capitulo) {
+    editor.irPara(onde.posicao);
+    // Abrir o capítulo guardou o começo dele: o lugar certo volta já, sem
+    // esperar o cursor sossegar.
+    guardarOnde();
+  }
   await diagnosticar();
 }
 
@@ -475,6 +573,7 @@ async function diagnosticar(): Promise<void> {
   registrar(
     `conforto ao abrir: zoom=${rotuloDoZoom(zoom)} largura=${window.innerWidth} lateral=${getComputedStyle(elemento("lateral")).display} máquina=${maquinaLigada() ? "ligada" : "desligada"}`,
   );
+  registrar(`onde: capítulo=${capituloAtual} posição=${editor.posicao()} hoje="${botaoDeHoje.textContent}"`);
   const roteiro = await invoke<RoteiroDeTeste | null>("roteiro_de_teste");
   if (roteiro) {
     // O tema do roteiro vale só para esta janela: não é guardado.
@@ -503,6 +602,7 @@ async function diagnosticar(): Promise<void> {
       );
     }
     if (roteiro.escrita) await roteiroDaEscrita();
+    if (roteiro.sessao) await roteiroDaSessao();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -526,6 +626,23 @@ async function diagnosticar(): Promise<void> {
     // De volta ao começo do capítulo, que é o que a captura do teste mostra.
     editor.view.scrollDOM.scrollTop = 0;
   }
+}
+
+/** Define a meta pelo campo, troca de capítulo pelo clique na lateral e
+ *  deixa o cursor num lugar conhecido, para a próxima abertura conferir. */
+async function roteiroDaSessao(): Promise<void> {
+  const espera = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  botaoDeHoje.click();
+  campoDaMeta.value = "50";
+  campoDaMeta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await espera(ESPERA_PARA_CONTAR_MS * 3);
+  registrar(`hoje: "${botaoDeHoje.textContent}" campo=${campoDaMeta.hidden ? "fechado" : "aberto"}`);
+  const segundo = capitulos[1]?.nome;
+  if (segundo !== undefined) botaoDoCapitulo(segundo)?.click();
+  for (let vez = 0; vez < 100 && capituloAtual !== segundo; vez += 1) await espera(50);
+  editor.irPara(7);
+  await espera(ESPERA_PARA_GUARDAR_ONDE_MS * 2);
+  registrar(`onde guardado: capítulo=${capituloAtual} posição=${editor.posicao()}`);
 }
 
 /** Digita pelo caminho de entrada do navegador (não pela API do editor),
@@ -624,6 +741,7 @@ interface RoteiroDeTeste {
   criar_estilo: boolean;
   conforto: boolean;
   escrita: boolean;
+  sessao: boolean;
 }
 
 /** As contagens como estão escritas na tela. */
@@ -851,6 +969,7 @@ window.addEventListener("blur", () => void gravador.salvarAgora());
 // falta e só então a janela fecha. Se não deu para salvar, ela fica aberta
 // com o aviso; pedir para fechar de novo fecha assim mesmo (o Rust deixa).
 void listen("pedido-de-fechar", async () => {
+  guardarOnde();
   if (await gravador.salvarAgora()) {
     await invoke("fechar_janela");
     return;

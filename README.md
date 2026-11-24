@@ -105,6 +105,10 @@ O que ele faz hoje:
   O botão ☰, ou F9, esconde a lateral. "Máquina", ou F10, liga a máquina de
   escrever: a linha em que você escreve fica no meio da tela. F11 é tela
   cheia. Zoom, lateral e máquina de escrever ficam guardados.
+- Aberto pelo menu, o programa volta ao último livro, no capítulo e na linha
+  em que você parou.
+- A barra de baixo mostra as palavras escritas hoje no livro. Clique nelas
+  para definir a meta do dia; campo vazio tira a meta.
 - Buscar e substituir com Ctrl+F (ou Ctrl+H), dentro do capítulo aberto.
 - Aspas curvas e travessão ao digitar: `"` vira “ ”, `'` vira ‘ ’ e `--` vira
   —. O botão "Aspas" da barra de baixo desliga. Nas linhas `:::`, em código

@@ -4,15 +4,15 @@ chegou ao disco e o que o navegador aplicou.
 
 Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
 
-`--passada=N` roda só a passada N (de 1 a 9), para conferir uma mudança sem
-esperar as outras; dizer que a interface funciona pede as nove.
+`--passada=N` roda só a passada N (de 1 a 10), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as dez.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
 gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
 passadas 4 e 5 gravam ao lado dele `<nome>-escuro.png` e `<nome>-foco.png`.
 
-Nove passadas:
+Dez passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -30,6 +30,9 @@ Nove passadas:
    três escolhas voltam.
 9. escrita: aspas e hifens digitados viram aspas curvas e travessão, o botão
    desliga a troca, e Ctrl+F abre a busca em português e acha a palavra.
+10. sessão: define a meta do dia, troca de capítulo e fecha; aberto de novo
+    sem dizer a pasta, o app volta ao mesmo livro, capítulo e cursor, com a
+    conta de palavras de hoje.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -148,7 +151,7 @@ class App:
     def __init__(
         self,
         binario: str,
-        pasta: pathlib.Path,
+        pasta: pathlib.Path | None,
         fechar: bool = False,
         exportar_para: pathlib.Path | None = None,
         tema: str | None = "claro",
@@ -158,6 +161,7 @@ class App:
         criar_estilo: bool = False,
         conforto: bool = False,
         escrita: bool = False,
+        sessao: bool = False,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -187,8 +191,11 @@ class App:
             ambiente["MD_NOVEL_TESTE_CONFORTO"] = "1"
         if escrita:
             ambiente["MD_NOVEL_TESTE_ESCRITA"] = "1"
+        if sessao:
+            ambiente["MD_NOVEL_TESTE_SESSAO"] = "1"
         self.processo = subprocess.Popen(
-            [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
+            # Sem pasta: o app abre o último livro, como pelo menu.
+            [binario] if pasta is None else [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
         )
         self.linhas: list[str] = []
         self._fila: queue.Queue = queue.Queue()
@@ -604,6 +611,49 @@ def passada_da_escrita(binario: str, falhas: list[str]) -> None:
             falhas.append(f"passada 9: a busca não selecionou a palavra: {app.linha_com('busca: achou')!r}")
 
 
+def passada_da_sessao(binario: str, falhas: list[str]) -> None:
+    print("passada 10: reabrir onde parou e a meta do dia")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria, tempfile.TemporaryDirectory(
+        prefix="md-novel-dados-"
+    ) as dados:
+        pasta = pathlib.Path(temporaria)
+        montar_livro(pasta)
+        # Primeira janela: meta de 50, segundo capítulo, cursor na posição 7, fecha.
+        app = App(binario, pasta, sessao=True, fechar=True, dados=pathlib.Path(dados))
+        try:
+            if app.esperar_linha("onde guardado:") is None:
+                falhas.append("passada 10: a primeira janela não chegou ao fim do roteiro")
+                return
+            try:
+                app.processo.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                falhas.append("passada 10: a primeira janela não fechou")
+                return
+        finally:
+            app.encerrar()
+        abertura = app.linha_com("onde:")
+        if 'capítulo=01-abertura.md posição=0 hoje="Hoje: 0 palavras"' not in abertura:
+            falhas.append(f"passada 10: o livro novo não abriu no começo, com a conta zerada: {abertura!r}")
+        if f'hoje: "Hoje: {PALAVRAS_DA_FRASE} de 50 palavras" campo=fechado' not in app.linha_com("hoje:"):
+            falhas.append(f"passada 10: a meta não entrou ou a conta de hoje está errada: {app.linha_com('hoje:')!r}")
+        if "onde guardado: capítulo=02-a-casa.md posição=7" not in app.linha_com("onde guardado:"):
+            falhas.append(f"passada 10: {app.linha_com('onde guardado:')!r}")
+        # Segunda janela: sem pasta na linha de comando, como pelo menu.
+        app = App(binario, None, dados=pathlib.Path(dados))
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 10: sem pasta, o app não reabriu o último livro")
+                return
+        finally:
+            app.encerrar()
+        esperado = f'onde: capítulo=02-a-casa.md posição=7 hoje="Hoje: {PALAVRAS_DA_FRASE} de 50 palavras"'
+        if esperado not in app.linha_com("onde:"):
+            falhas.append(f"passada 10: não voltou ao capítulo, ao cursor e à conta de hoje: {app.linha_com('onde:')!r}")
+        sobras = sorted(entrada.name for entrada in pasta.iterdir())
+        if sobras != ["01-abertura.md", "02-a-casa.md", "estilo.yaml"]:
+            falhas.append(f"passada 10: arquivos na pasta do livro: {sobras}")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -633,11 +683,11 @@ def principal() -> int:
     argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
     so_a_passada = None
     for opcao in opcoes:
-        escolhida = re.fullmatch(r"--passada=([1-9])", opcao)
+        escolhida = re.fullmatch(r"--passada=([1-9]|10)", opcao)
         if escolhida is not None:
             so_a_passada = int(escolhida[1])
         elif opcao != "--na-tela":
-            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 9")
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 10")
             return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
@@ -661,6 +711,7 @@ def principal() -> int:
         lambda: passada_de_criar_o_estilo(binario, falhas),
         lambda: passada_do_conforto(binario, falhas),
         lambda: passada_da_escrita(binario, falhas),
+        lambda: passada_da_sessao(binario, falhas),
     ]
     for numero, passada in enumerate(passadas, start=1):
         if so_a_passada is None or so_a_passada == numero:
