@@ -1,6 +1,9 @@
 //! md Novel, o programa de desktop. Adaptador fino: cada comando repassa
 //! para a `Sessao`, que é quem conhece o livro. Sem regra de estilo aqui.
 
+// Só no Linux: no Mac o WebView do sistema corrige sem o app pedir.
+#[cfg(target_os = "linux")]
+mod corretor;
 mod exportacao;
 mod janela;
 mod memoria;
@@ -23,6 +26,17 @@ struct Estado {
     sessao: Mutex<Sessao>,
     /// Já houve um pedido de fechar que a página ainda não atendeu.
     fechamento_pedido: AtomicBool,
+    corretor: Mutex<EstadoDoCorretor>,
+}
+
+/// O que o corretor ortográfico carregou ao abrir o app.
+#[derive(Clone, Default, Serialize)]
+struct EstadoDoCorretor {
+    /// As línguas com dicionário carregado. Vazio fora do Linux, onde o
+    /// WebView do sistema corrige por conta própria.
+    linguas: Vec<String>,
+    /// O que dizer ao autor se o dicionário da língua do app não está lá.
+    aviso: Option<String>,
 }
 
 impl Estado {
@@ -99,6 +113,67 @@ fn escolher_pasta(
     let livro = estado.sessao().abrir_pasta(&pasta)?;
     lembrar(&app, Path::new(&livro.pasta));
     Ok(Some(livro))
+}
+
+/// A língua pedida ao corretor. Em build de depuração o teste funcional pode
+/// pedir outra, para conferir o aviso de dicionário ausente.
+#[cfg(target_os = "linux")]
+fn lingua_do_corretor() -> String {
+    if cfg!(debug_assertions) {
+        if let Ok(lingua) = std::env::var("MD_NOVEL_TESTE_LINGUA_DO_CORRETOR") {
+            return lingua;
+        }
+    }
+    corretor::LINGUA.to_owned()
+}
+
+/// Liga a correção ortográfica do WebKitGTK na língua do app e guarda o que
+/// ele carregou. Sem isto o `spellcheck` da página não faz nada no Linux.
+#[cfg(target_os = "linux")]
+fn ligar_o_corretor(app: &AppHandle) {
+    use webkit2gtk::{WebContextExt, WebViewExt};
+
+    let Some(janela) = app.get_webview_window("main") else {
+        return;
+    };
+    let lingua = lingua_do_corretor();
+    let para_guardar = app.clone();
+    let ligado = janela.with_webview(move |webview| {
+        let Some(contexto) = webview.inner().context() else {
+            return;
+        };
+        contexto.set_spell_checking_languages(&[lingua.as_str()]);
+        contexto.set_spell_checking_enabled(true);
+        // O WebKitGTK só fica com a língua que tem dicionário instalado.
+        let linguas: Vec<String> = contexto
+            .spell_checking_languages()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let aviso = corretor::aviso_sem_dicionario(&lingua, &linguas);
+        *para_guardar
+            .state::<Estado>()
+            .corretor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = EstadoDoCorretor { linguas, aviso };
+    });
+    if let Err(erro) = ligado {
+        eprintln!("aviso: não consegui ligar o corretor ortográfico: {erro}");
+    }
+}
+
+/// No Mac o WebView do sistema já corrige, com o dicionário do sistema.
+#[cfg(not(target_os = "linux"))]
+fn ligar_o_corretor(_app: &AppHandle) {}
+
+/// O que o corretor carregou, para a página avisar se falta o dicionário.
+#[tauri::command]
+fn estado_do_corretor(estado: State<'_, Estado>) -> EstadoDoCorretor {
+    estado
+        .corretor
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
 }
 
 /// Guarda o livro aberto como o último, para a próxima abertura do app.
@@ -225,6 +300,8 @@ struct RoteiroDeTeste {
     sessao: bool,
     /// Criar um capítulo pelo botão da lateral.
     capitulo_novo: bool,
+    /// Digitar palavras erradas, com pausas para a captura da tela.
+    corretor: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -248,6 +325,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         escrita: std::env::var_os("MD_NOVEL_TESTE_ESCRITA").is_some(),
         sessao: std::env::var_os("MD_NOVEL_TESTE_SESSAO").is_some(),
         capitulo_novo: std::env::var_os("MD_NOVEL_TESTE_CAPITULO_NOVO").is_some(),
+        corretor: std::env::var_os("MD_NOVEL_TESTE_CORRETOR").is_some(),
     })
 }
 
@@ -302,6 +380,7 @@ fn main() {
         // Antes de a página carregar: quando ela pedir o livro, ele já está aberto.
         .setup(|app| {
             abrir_o_livro_inicial(app.handle());
+            ligar_o_corretor(app.handle());
             Ok(())
         })
         .on_window_event(ao_pedir_para_fechar)
@@ -310,6 +389,7 @@ fn main() {
             escolher_pasta,
             criar_estilo,
             criar_capitulo,
+            estado_do_corretor,
             definir_zoom,
             alternar_tela_cheia,
             abrir_capitulo,

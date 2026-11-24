@@ -4,15 +4,16 @@ chegou ao disco e o que o navegador aplicou.
 
 Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
 
-`--passada=N` roda só a passada N (de 1 a 11), para conferir uma mudança sem
-esperar as outras; dizer que a interface funciona pede as onze.
+`--passada=N` roda só a passada N (de 1 a 12), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as doze.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
 gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
-passadas 4 e 5 gravam ao lado dele `<nome>-escuro.png` e `<nome>-foco.png`.
+passadas 4, 5 e 12 gravam ao lado dele `<nome>-escuro.png`, `<nome>-foco.png`
+e `<nome>-corretor.png`.
 
-Onze passadas:
+Doze passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -35,6 +36,10 @@ Onze passadas:
     conta de palavras de hoje.
 11. capítulo novo: o botão da lateral sugere o próximo número, cria o
     arquivo vazio e abre nele; o mesmo nome de novo é recusado.
+12. corretor ortográfico: com o dicionário pt_BR instalado, duas palavras
+    erradas digitadas ganham o sublinhado vermelho (contado na fotografia da
+    tela); pedindo uma língua sem dicionário, o app avisa. Só no Linux e no
+    display virtual; sem o `hunspell-pt-br` instalado esta passada reprova.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -165,6 +170,8 @@ class App:
         escrita: bool = False,
         sessao: bool = False,
         capitulo_novo: bool = False,
+        corretor: bool = False,
+        lingua_do_corretor: str | None = None,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -198,6 +205,11 @@ class App:
             ambiente["MD_NOVEL_TESTE_SESSAO"] = "1"
         if capitulo_novo:
             ambiente["MD_NOVEL_TESTE_CAPITULO_NOVO"] = "1"
+        if corretor:
+            ambiente["MD_NOVEL_TESTE_CORRETOR"] = "1"
+        ambiente.pop("MD_NOVEL_TESTE_LINGUA_DO_CORRETOR", None)
+        if lingua_do_corretor is not None:
+            ambiente["MD_NOVEL_TESTE_LINGUA_DO_CORRETOR"] = lingua_do_corretor
         self.processo = subprocess.Popen(
             # Sem pasta: o app abre o último livro, como pelo menu.
             [binario] if pasta is None else [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
@@ -695,6 +707,81 @@ def passada_do_capitulo_novo(binario: str, falhas: list[str]) -> None:
             falhas.append(f"passada 11: arquivos na pasta do livro: {sobras}")
 
 
+def pontos_vermelhos(imagem: pathlib.Path) -> int:
+    """Quantos pontos da fotografia são do vermelho do sublinhado do corretor.
+    O traço é fino e suavizado: sobre o papel claro ele sai rosado, perto de
+    (255, 150, 146). Conta-se só o vermelho cheio (250 ou mais): a borda
+    colorida das letras, que o desenho de fonte para tela de cristal líquido
+    deixa, é mais escura e fica de fora. Medido em 2026-11-24: 177 pontos
+    para duas palavras, nenhum no resto da tela."""
+    saida = subprocess.run(
+        [
+            "magick",
+            str(imagem),
+            "-color-threshold",
+            "sRGB(250,120,120)-sRGB(255,200,200)",
+            "-format",
+            "%[fx:int(mean*w*h+0.5)]",
+            "info:",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return int(saida)
+
+
+def passada_do_corretor(binario: str, captura: str | None, falhas: list[str]) -> None:
+    print("passada 12: corretor ortográfico")
+    if not FORA_DA_TELA or shutil.which("import") is None or shutil.which("magick") is None:
+        falhas.append("passada 12: precisa do display virtual e do ImageMagick (import e magick) para fotografar a tela")
+        return
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria, tempfile.TemporaryDirectory(
+        prefix="md-novel-captura-"
+    ) as capturas:
+        pasta = pathlib.Path(temporaria)
+        montar_livro(pasta)
+        antes, depois = pathlib.Path(capturas) / "antes.png", pathlib.Path(capturas) / "depois.png"
+        app = App(binario, pasta, corretor=True)
+        try:
+            # O roteiro espera uns segundos depois de cada linha: é a hora da fotografia.
+            if app.esperar_linha("corretor: antes de digitar") is None:
+                falhas.append("passada 12: a interface não chegou ao roteiro do corretor")
+                return
+            capturar_o_display_virtual(str(antes))
+            if app.esperar_linha("corretor: depois de digitar") is None:
+                falhas.append("passada 12: a interface não digitou as palavras erradas")
+                return
+            capturar_o_display_virtual(str(depois))
+            # Com o png pedido, a fotografia das palavras sublinhadas fica ao lado dele.
+            if captura is not None:
+                base = pathlib.Path(captura)
+                shutil.copyfile(depois, base.with_name(f"{base.stem}-corretor{base.suffix}"))
+        finally:
+            app.encerrar()
+        if "corretor: línguas=pt_BR aviso=não" not in app.linha_com("corretor: línguas"):
+            falhas.append(f"passada 12: o dicionário pt_BR não foi carregado: {app.linha_com('corretor: línguas')!r}")
+        vermelho_antes, vermelho_depois = pontos_vermelhos(antes), pontos_vermelhos(depois)
+        print(f"  pontos vermelhos na tela: {vermelho_antes} antes, {vermelho_depois} depois")
+        # Duas palavras sublinhadas dão mais de cem pontos; o texto certo, nenhum.
+        if vermelho_antes > 30 or vermelho_depois - vermelho_antes < 100:
+            falhas.append(
+                f"passada 12: as palavras erradas não ganharam sublinhado vermelho ({vermelho_antes} pontos antes, {vermelho_depois} depois)"
+            )
+        # Sem dicionário para a língua pedida: nada carregado, e o aviso na tela.
+        app = App(binario, pasta, lingua_do_corretor="xx_XX")
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 12: com a língua sem dicionário a interface não chegou ao fim do roteiro")
+                return
+        finally:
+            app.encerrar()
+        if "corretor: línguas= aviso=sim" not in app.linha_com("corretor: línguas"):
+            falhas.append(f"passada 12: sem dicionário o app não avisou: {app.linha_com('corretor: línguas')!r}")
+        if "avisos=2" not in app.linha_com("livro:"):
+            falhas.append(f"passada 12: o aviso do corretor não está na tela: {app.linha_com('livro:')!r}")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -724,11 +811,11 @@ def principal() -> int:
     argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
     so_a_passada = None
     for opcao in opcoes:
-        escolhida = re.fullmatch(r"--passada=([1-9]|1[01])", opcao)
+        escolhida = re.fullmatch(r"--passada=([1-9]|1[012])", opcao)
         if escolhida is not None:
             so_a_passada = int(escolhida[1])
         elif opcao != "--na-tela":
-            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 11")
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 12")
             return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
@@ -754,6 +841,7 @@ def principal() -> int:
         lambda: passada_da_escrita(binario, falhas),
         lambda: passada_da_sessao(binario, falhas),
         lambda: passada_do_capitulo_novo(binario, falhas),
+        lambda: passada_do_corretor(binario, captura, falhas),
     ]
     for numero, passada in enumerate(passadas, start=1):
         if so_a_passada is None or so_a_passada == numero:

@@ -105,6 +105,9 @@ O que ele faz hoje:
   O botão ☰, ou F9, esconde a lateral. "Máquina", ou F10, liga a máquina de
   escrever: a linha em que você escreve fica no meio da tela. F11 é tela
   cheia. Zoom, lateral e máquina de escrever ficam guardados.
+- Corretor ortográfico em português: palavra errada ganha o sublinhado
+  vermelho. No Linux precisa do dicionário do hunspell (`hunspell-pt-br`, que
+  no Arch está no AUR); sem ele o programa avisa. No Mac usa o do sistema.
 - "Novo capítulo…", na lateral, cria um capítulo vazio na pasta do livro e
   já sugere o próximo número. Renomear, apagar e reordenar continuam sendo
   feitos na pasta.

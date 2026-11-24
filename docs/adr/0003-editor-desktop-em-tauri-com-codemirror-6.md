@@ -359,6 +359,27 @@ O autor pediu para criar capítulo sem sair do programa.
 - **Fica de fora:** renomear, apagar e reordenar capítulos. Continuam sendo
   feitos na pasta, e a ordem continua sendo a do nome.
 
+## Corretor ortográfico (2026-11-24)
+
+Última das facilidades pedidas pelo autor.
+
+- **Quem corrige é o WebView do sistema**, não o app: o editor já declarava
+  `spellcheck` e `lang="pt-BR"` no texto. No Mac isso basta. No Linux o
+  WebKitGTK só corrige se o app ligar a correção e disser a língua, e é o que
+  o `main.rs` faz ao abrir, com `pt_BR`.
+- **Dependência nova, só no Linux: `webkit2gtk` 2.0.2**, a mesma versão que
+  o Tauri já traz, travada com `=`. O tipo do WebView precisa ser o mesmo dos
+  dois lados; se o Tauri mudar de versão, a compilação reprova até a trava
+  mudar junto.
+- **Sem o dicionário, o app avisa** uma vez por abertura, dizendo a língua e
+  o pacote (`hunspell-pt-br`, do AUR no Arch). O WebKitGTK só fica com a
+  língua que tem dicionário instalado, e é por aí que o app sabe.
+- **A língua é fixa, português do Brasil.** Um livro em outra língua ficaria
+  todo sublinhado; escolher a língua por livro fica para quando houver um.
+- **Não verificado:** as sugestões no botão direito, e se o texto que já
+  estava no capítulo é conferido sem ser tocado (o teste confere o que foi
+  digitado). No Mac, nada foi conferido.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -375,6 +396,8 @@ O autor pediu para criar capítulo sem sair do programa.
 | A sessão na janela de verdade | `app/teste_funcional.py`, passada 10 | à mão, fora do CI | aberto sem pasta, o app não volta ao último livro, ao capítulo e ao cursor, a conta de hoje ou a meta se perdem, ou aparece arquivo na pasta do livro |
 | Capítulo novo não sai da pasta nem sobrescreve | `crates/workspace/tests/livro.rs` (`criar_capitulo_*`, `nome_de_capitulo_*`) | `make check` | um nome com barra, `..`, ponto no começo ou caractere reservado é aceito, um capítulo que existe é trocado, ou aparece arquivo fora da pasta do livro |
 | Capítulo novo na janela de verdade | `app/teste_funcional.py`, passada 11 | à mão, fora do CI | o botão não sugere o próximo número, o capítulo não é criado vazio, listado e aberto, o texto do capítulo anterior não é salvo antes, ou o nome repetido é aceito |
+| Aviso do corretor | testes de `app/src-tauri/src/corretor.rs` (só no Linux) | `make check` | com o dicionário da língua carregado ainda há aviso, ou sem ele o aviso não diz a língua e o pacote |
+| O corretor na janela de verdade | `app/teste_funcional.py`, passada 12, com o `hunspell-pt-br` instalado | à mão, fora do CI | o dicionário não é carregado, duas palavras erradas digitadas não ganham o sublinhado vermelho na fotografia da tela, ou pedir uma língua sem dicionário não mostra o aviso |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |

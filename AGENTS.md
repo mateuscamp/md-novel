@@ -18,11 +18,12 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São onze passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São doze passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
   guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
   máquina de escrever), a escrita (aspas, travessão, busca), a sessão
-  (reabrir onde parou, meta do dia) e o capítulo novo. `--passada=N` roda
+  (reabrir onde parou, meta do dia), o capítulo novo e o corretor
+  ortográfico, que precisa do `hunspell-pt-br` instalado. `--passada=N` roda
   uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
