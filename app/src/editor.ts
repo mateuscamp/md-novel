@@ -21,6 +21,10 @@ export interface Editor {
   focar(): void;
   /** Leva a linha do cursor para o meio da tela. */
   centrar(): void;
+  /** A posição do cursor no texto. */
+  posicao(): number;
+  /** Leva o cursor para `posicao` (ou para o fim, se o texto é mais curto) e mostra a linha. */
+  irPara(posicao: number): void;
   /** Põe `texto` na busca e seleciona a próxima ocorrência. Usado pelo teste funcional. */
   buscarProximo(texto: string): void;
   /** Digita no fim do texto, como o autor faria. Usado pelo teste funcional. */
@@ -189,6 +193,14 @@ export function criarEditor(
         .join("\n"),
     focar: () => view.focus(),
     centrar: () => centrar(view),
+    posicao: () => view.state.selection.main.head,
+    irPara: (posicao) => {
+      const destino = Math.min(Math.max(0, posicao), view.state.doc.length);
+      view.dispatch({
+        selection: { anchor: destino },
+        effects: EditorView.scrollIntoView(destino, { y: "center" }),
+      });
+    },
     buscarProximo: (texto) => {
       view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: texto })) });
       findNext(view);

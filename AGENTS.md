@@ -18,11 +18,11 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São nove passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São dez passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
   guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
-  máquina de escrever) e a escrita (aspas, travessão, busca). `--passada=N`
-  roda uma só. Ele abre o app num
+  máquina de escrever), a escrita (aspas, travessão, busca) e a sessão
+  (reabrir onde parou, meta do dia). `--passada=N` roda uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -85,7 +85,10 @@ comando. ADRs em `docs/adr/`.
   que não daria para devolver igual (finais de linha misturados, fora do
   UTF-8) é recusado na leitura, nunca "consertado".
 - O app não cria arquivo na pasta do livro além do que o autor pediu para
-  salvar ou criar (hoje: os capítulos e o `estilo.yaml` do botão). Cache e configuração do app, quando existirem, vão fora dela.
+  salvar ou criar (hoje: os capítulos e o `estilo.yaml` do botão). O que o
+  app lembra (último livro, onde parou, palavras de hoje, tema, zoom) fica
+  na pasta de dados dele: o último livro em `memoria.rs`, pela
+  `SaidaPendente`; o resto no armazenamento da janela. Cache e configuração do app, quando existirem, vão fora dela.
 - Limite ou guarda nova (tamanho, faixa, extensão) vem com o teste que
   reprova quando ela é removida.
 - Contagem de palavras e título do capítulo existem duas vezes, em

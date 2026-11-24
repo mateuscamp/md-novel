@@ -317,6 +317,29 @@ Segunda parte das facilidades pedidas pelo autor.
 - **Só a tecla digitada é trocada.** Texto colado entra como veio, e o que
   já está no capítulo não é reescrito.
 
+## A sexta fatia: a sessão de escrita (2026-11-24)
+
+Terceira parte das facilidades pedidas pelo autor.
+
+- **Aberto sem pasta (pelo menu), o app volta ao último livro.** Quem lembra
+  é o Rust: `ultimo-livro.txt`, na pasta de dados do app, gravado pela
+  `SaidaPendente` a cada livro aberto. A página continua sem mandar caminho.
+  Se a pasta sumiu ou o registro está estragado, o app abre sem livro. A
+  abertura inicial passou para o `setup` do Tauri, que é onde a pasta de
+  dados fica conhecida.
+- **Em cada livro, o app volta ao capítulo e ao cursor de onde o autor
+  parou.** Isso fica no armazenamento da janela, um registro por livro, com
+  o caminho que veio do Rust na chave.
+- **"Hoje: N palavras"** na barra de baixo: o total do livro agora menos o
+  total de quando o dia começou, por livro. Clicar define a meta do dia (uma
+  só, para todos os livros); com ela, "Hoje: N de M palavras". Cortar texto
+  desconta, e o número pode ficar negativo.
+- **Nada disso vai para a pasta do livro.**
+- **Custo aceito:** o temporário da `SaidaPendente` na pasta de dados
+  termina em `.txt`, que a faxina de órfãos não recolhe; uma queda no meio
+  da gravação deixa lá um arquivo de bytes. E capítulos que chegam por fora
+  (a sincronização) contam como escritos hoje.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -328,6 +351,9 @@ Segunda parte das facilidades pedidas pelo autor.
 | Aspas e travessão | `app/src/tipografia.test.ts` | `make check` | uma aspa abre onde devia fechar, dois hifens não viram travessão, ou algo é trocado numa linha `:::`, em código em linha ou em tabela |
 | A busca fala português | `app/src/busca.test.ts`, que lê os textos do pacote instalado | `make check` | o `@codemirror/search` tem um texto sem tradução, ou a tradução perde o `$` do número |
 | Escrita na janela de verdade | `app/teste_funcional.py`, passada 9 | à mão, fora do CI | as teclas não viram aspas curvas e travessão, o botão não desliga a troca, Ctrl+F não abre o painel em português ou a busca não seleciona a palavra |
+| O último livro | testes de `app/src-tauri/src/memoria.rs` | `make check` | um registro estragado, relativo, grande demais ou de pasta que sumiu abre alguma coisa, ou sobra temporário na pasta de dados |
+| Onde parou e a conta de hoje | `app/src/onde.test.ts` e `app/src/meta.test.ts` | `make check` | um capítulo que sumiu é reaberto, o dia vira e a conta não recomeça, ou uma meta fora da faixa é aceita |
+| A sessão na janela de verdade | `app/teste_funcional.py`, passada 10 | à mão, fora do CI | aberto sem pasta, o app não volta ao último livro, ao capítulo e ao cursor, a conta de hoje ou a meta se perdem, ou aparece arquivo na pasta do livro |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |

@@ -145,8 +145,13 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #status span:empty { display: none; }
 #estado { margin-left: auto; }
 #estado.erro { color: var(--erro-tinta); font-weight: 600; }
-#zoom, #aspas { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
-#zoom:hover, #aspas:hover { background: var(--realce); }
+#zoom, #aspas, #hoje { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
+#zoom:hover, #aspas:hover, #hoje:hover { background: var(--realce); }
+#hoje[hidden], #campo-da-meta[hidden] { display: none; }
+#campo-da-meta {
+  font: inherit; color: var(--tinta); background: var(--papel);
+  border: 1px solid var(--borda); border-radius: 4px; padding: 0 5px;
+}
 /* Desligado: riscado e apagado. */
 #aspas[aria-pressed="false"] { color: var(--tinta-apagada); text-decoration: line-through; }
 
