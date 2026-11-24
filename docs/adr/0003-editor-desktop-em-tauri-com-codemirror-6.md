@@ -296,6 +296,27 @@ aspas, sessão e capítulo novo vêm depois.
 - **O atalho usa Ctrl (Cmd no Mac), nunca Super nem Alt:** no Linux a tecla
   Super é do gerenciador de janelas.
 
+## A quinta fatia: buscar, aspas e travessão (2026-11-24)
+
+Segunda parte das facilidades pedidas pelo autor.
+
+- **Buscar e substituir é o painel do CodeMirror** (`@codemirror/search`,
+  dependência nova, a oitava da interface): Ctrl+F e Ctrl+H abrem o mesmo
+  painel, no alto da folha. Escrever uma busca própria seria refazer o que o
+  editor já resolve (realce das ocorrências, expressão regular, substituir
+  dentro do desfazer). O painel vem em inglês; `busca.ts` traduz cada
+  texto, e um teste confere a tradução contra o pacote instalado.
+- **Aspas curvas e travessão ao digitar**, como no novelWriter: `"` vira
+  “ ou ”, `'` vira ‘ ou ’, e `--` vira —. Ligado de fábrica, com um botão na
+  barra de baixo para desligar; a escolha fica guardada. O arquivo passa a
+  guardar os caracteres tipográficos, e o Pandoc os leva ao .docx como são.
+- **Onde o Markdown precisa do sinal reto, nada é trocado:** na linha de um
+  bloco `:::` (o `custom-style="..."`), em código, em endereço de link e em
+  linha de tabela. O terceiro hífen numa linha só de travessão devolve
+  `---`, a quebra de cena.
+- **Só a tecla digitada é trocada.** Texto colado entra como veio, e o que
+  já está no capítulo não é reescrito.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -304,6 +325,9 @@ aspas, sessão e capítulo novo vêm depois.
 | Núcleo sem Tauri | `crates/estilo/tests/fronteira.rs` (já existe) e o mesmo teste em `crates/exportar` | `make check` | `tauri` aparece como dependência de um crate do núcleo |
 | Contagem e título iguais no Rust e na interface | `crates/workspace/tests/texto.rs` e `app/src/texto.test.ts`, os dois lendo `crates/workspace/tests/fixtures/` | `make check` | um dos lados dá outro número ou outro título para um caso do arquivo |
 | Os casos de título são o que o Pandoc lê | `crates/exportar/tests/titulos_pandoc.rs`, que passa cada caso de `titulos.txt` pelo Pandoc | `make check` | o arquivo de casos afirma um título que o Pandoc não dá |
+| Aspas e travessão | `app/src/tipografia.test.ts` | `make check` | uma aspa abre onde devia fechar, dois hifens não viram travessão, ou algo é trocado numa linha `:::`, em código em linha ou em tabela |
+| A busca fala português | `app/src/busca.test.ts`, que lê os textos do pacote instalado | `make check` | o `@codemirror/search` tem um texto sem tradução, ou a tradução perde o `$` do número |
+| Escrita na janela de verdade | `app/teste_funcional.py`, passada 9 | à mão, fora do CI | as teclas não viram aspas curvas e travessão, o botão não desliga a troca, Ctrl+F não abre o painel em português ou a busca não seleciona a palavra |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |

@@ -2,12 +2,15 @@
 // direto nelas. A tipografia vem toda do CSS gerado pelo crate `estilo`.
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { defineLanguageFacet, Language, syntaxHighlighting } from "@codemirror/language";
+import { defineLanguageFacet, Language, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { findNext, openSearchPanel, SearchQuery, search, searchKeymap, setSearchQuery } from "@codemirror/search";
 import { EditorState, type Extension, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 import { tagHighlighter, tags } from "@lezer/highlight";
 import { parser, Strikethrough } from "@lezer/markdown";
 import { marcarLinhas } from "./blocos.ts";
+import { FRASES_DA_BUSCA } from "./busca.ts";
+import { substituicao } from "./tipografia.ts";
 
 export interface Editor {
   /** Troca o texto inteiro (outro capítulo): o desfazer começa do zero. */
@@ -18,6 +21,8 @@ export interface Editor {
   focar(): void;
   /** Leva a linha do cursor para o meio da tela. */
   centrar(): void;
+  /** Põe `texto` na busca e seleciona a próxima ocorrência. Usado pelo teste funcional. */
+  buscarProximo(texto: string): void;
   /** Digita no fim do texto, como o autor faria. Usado pelo teste funcional. */
   digitarNoFim(texto: string): void;
   readonly view: EditorView;
@@ -84,11 +89,34 @@ export interface AoEditar {
   aoSelecionar(): void;
   /** A máquina de escrever está ligada: a linha do cursor vai para o meio. */
   maquinaDeEscrever(): boolean;
+  /** Aspas curvas e travessão ao digitar estão ligados. */
+  tipografia(): boolean;
+}
+
+/** Onde o texto é código, endereço ou HTML: ali o sinal digitado fica reto. */
+const SEM_TIPOGRAFIA = new Set([
+  "FencedCode",
+  "CodeBlock",
+  "InlineCode",
+  "CodeText",
+  "CodeInfo",
+  "URL",
+  "HTMLTag",
+  "HTMLBlock",
+  "Comment",
+  "CommentBlock",
+]);
+
+function dentroDeCodigo(estado: EditorState, posicao: number): boolean {
+  for (let no: ReturnType<typeof syntaxTree>["topNode"] | null = syntaxTree(estado).resolveInner(posicao, -1); no; no = no.parent) {
+    if (SEM_TIPOGRAFIA.has(no.name)) return true;
+  }
+  return false;
 }
 
 export function criarEditor(
   pai: HTMLElement,
-  { aoMudar, aoSalvar, aoSelecionar, maquinaDeEscrever }: AoEditar,
+  { aoMudar, aoSalvar, aoSelecionar, maquinaDeEscrever, tipografia }: AoEditar,
 ): Editor {
   // Um pedido de centro por quadro: digitar depressa não empilha rolagens.
   let centroPedido = false;
@@ -107,9 +135,29 @@ export function criarEditor(
     history(),
     keymap.of([
       { key: "Mod-s", preventDefault: true, run: () => (aoSalvar(), true) },
+      // Buscar e substituir são o mesmo painel: Ctrl+H abre o de Ctrl+F.
+      { key: "Mod-h", preventDefault: true, run: openSearchPanel },
+      ...searchKeymap,
       ...defaultKeymap,
       ...historyKeymap,
     ]),
+    search({ top: true }),
+    EditorState.phrases.of(FRASES_DA_BUSCA),
+    // Aspas curvas e travessão: uma tecla por vez, sem seleção, fora de código.
+    EditorView.inputHandler.of((view, de, ate, texto) => {
+      if (!tipografia() || de !== ate || dentroDeCodigo(view.state, de)) return false;
+      const linha = view.state.doc.lineAt(de);
+      const troca = substituicao(linha.text.slice(0, de - linha.from), texto);
+      if (troca === null) return false;
+      const inicio = de - troca.apagar;
+      view.dispatch({
+        changes: { from: inicio, to: ate, insert: troca.inserir },
+        selection: { anchor: inicio + troca.inserir.length },
+        userEvent: "input.type",
+        scrollIntoView: true,
+      });
+      return true;
+    }),
     marcasDasLinhas,
     markdown.extension,
     syntaxHighlighting(realce),
@@ -141,6 +189,10 @@ export function criarEditor(
         .join("\n"),
     focar: () => view.focus(),
     centrar: () => centrar(view),
+    buscarProximo: (texto) => {
+      view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: texto })) });
+      findNext(view);
+    },
     digitarNoFim: (texto) => {
       const fim = view.state.doc.length;
       view.dispatch({

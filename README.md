@@ -105,6 +105,10 @@ O que ele faz hoje:
   O botão ☰, ou F9, esconde a lateral. "Máquina", ou F10, liga a máquina de
   escrever: a linha em que você escreve fica no meio da tela. F11 é tela
   cheia. Zoom, lateral e máquina de escrever ficam guardados.
+- Buscar e substituir com Ctrl+F (ou Ctrl+H), dentro do capítulo aberto.
+- Aspas curvas e travessão ao digitar: `"` vira “ ”, `'` vira ‘ ’ e `--` vira
+  —. O botão "Aspas" da barra de baixo desliga. Nas linhas `:::`, em código
+  e em links o sinal fica reto.
 - "Exportar .docx…" salva o que está na tela, pergunta onde gravar e gera o
   livro inteiro, com os capítulos em ordem e o estilo do `estilo.yaml`. Os
   avisos do Pandoc (uma imagem que não foi achada, por exemplo) aparecem na

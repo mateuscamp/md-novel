@@ -145,8 +145,10 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #status span:empty { display: none; }
 #estado { margin-left: auto; }
 #estado.erro { color: var(--erro-tinta); font-weight: 600; }
-#zoom { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
-#zoom:hover { background: var(--realce); }
+#zoom, #aspas { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
+#zoom:hover, #aspas:hover { background: var(--realce); }
+/* Desligado: riscado e apagado. */
+#aspas[aria-pressed="false"] { color: var(--tinta-apagada); text-decoration: line-through; }
 
 /* ---- A folha ---- */
 
@@ -197,6 +199,27 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .md-novel-citacao, .md-novel-comentario { color: var(--tinta-fraca); }
 /* Por último: o sinal dentro de um trecho em negrito ou riscado continua leve. */
 .md-novel-sinal { color: var(--tinta-apagada); font-weight: 400; text-decoration: none; }
+
+/* ---- Buscar e substituir: o painel do CodeMirror com as cores da moldura ---- */
+
+#folha .cm-panels {
+  background: var(--lateral); color: var(--tinta); border-bottom: 1px solid var(--borda);
+  font: 13px/1.5 system-ui, sans-serif;
+}
+#folha .cm-panel.cm-search { padding: 8px 36px 8px 20px; }
+#folha .cm-search .cm-textfield {
+  font: inherit; color: var(--tinta); background: var(--papel);
+  border: 1px solid var(--borda); border-radius: 5px; padding: 3px 7px;
+}
+#folha .cm-search .cm-button {
+  font: inherit; color: var(--tinta); background: transparent; background-image: none;
+  border: 1px solid var(--borda); border-radius: 5px; padding: 3px 9px; cursor: pointer;
+}
+#folha .cm-search .cm-button:hover { background: var(--realce); }
+#folha .cm-search label { font-size: inherit; color: var(--tinta-fraca); }
+#folha .cm-search [name="close"] { color: var(--tinta-fraca); font-size: 18px; top: 4px; right: 10px; }
+#folha .cm-searchMatch { background: var(--destaque-fundo); outline: 1px solid var(--destaque); }
+#folha .cm-searchMatch-selected { background: var(--selecao); }
 
 /* Máquina de escrever: folga embaixo para a última linha do capítulo poder
    subir até o meio da tela. Quem rola é o `editor.ts`. */
