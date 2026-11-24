@@ -69,3 +69,8 @@ export const DESLIGADO = "nao";
 export function lerLigado(guardado: string | null): boolean {
   return guardado === LIGADO;
 }
+
+/** Para o que vem ligado de fábrica: só o "não" guardado desliga. */
+export function lerDesligado(guardado: string | null): boolean {
+  return guardado === DESLIGADO;
+}

@@ -9,6 +9,7 @@ import { test } from "node:test";
 const DEPENDENCIAS = [
   "@codemirror/commands",
   "@codemirror/language",
+  "@codemirror/search",
   "@codemirror/state",
   "@codemirror/view",
   "@lezer/highlight",

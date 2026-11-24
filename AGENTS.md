@@ -18,10 +18,11 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São oito passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São nove passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
-  guardada, criar o estilo.yaml pelo botão e o conforto (zoom, lateral,
-  máquina de escrever). `--passada=N` roda uma só. Ele abre o app num
+  guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
+  máquina de escrever) e a escrita (aspas, travessão, busca). `--passada=N`
+  roda uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -99,6 +100,11 @@ comando. ADRs em `docs/adr/`.
   (`foco.ts`, `conforto.ts`), usa Ctrl (Cmd no Mac) e nunca vale no meio da
   composição de um acento. O que a janela faz além do livro (zoom, tela
   cheia) é comando do Rust com a regra em `janela.rs`, não capacidade nova.
+- O app só troca o que o autor acabou de digitar (aspas, travessão), nunca
+  texto colado nem o que já está no capítulo, e nunca onde o Markdown
+  precisa do sinal reto (linha `:::`, código, link, tabela). Caso novo entra
+  primeiro em `tipografia.test.ts`.
+- Texto do CodeMirror que aparece para o autor é traduzido em `busca.ts`.
 - O editor mostra o Markdown, não esconde: sinal digitado (`*`, `#`, `:::`)
   continua na tela. O modo foco nunca esconde os avisos.
 - Caminho de imagem num capítulo vale a partir da pasta daquele capítulo

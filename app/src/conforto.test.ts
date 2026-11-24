@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   acaoDaRoda,
   atalhoDaTecla,
+  lerDesligado,
   lerLigado,
   lerZoom,
   rotuloDoZoom,
@@ -64,4 +65,7 @@ test("as teclas de conforto: zoom com Ctrl, lateral, máquina de escrever e tela
 test("uma escolha de liga e desliga guardada só vale se for exatamente \"sim\"", () => {
   assert.equal(lerLigado("sim"), true);
   for (const outro of [null, "", "nao", "true", "1", "SIM"]) assert.equal(lerLigado(outro), false, String(outro));
+  // O que vem ligado de fábrica só desliga com o "nao" guardado.
+  assert.equal(lerDesligado("nao"), true);
+  for (const outro of [null, "", "sim", "false", "NAO"]) assert.equal(lerDesligado(outro), false, String(outro));
 });

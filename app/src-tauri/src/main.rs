@@ -171,6 +171,8 @@ struct RoteiroDeTeste {
     criar_estilo: bool,
     /// Usar o zoom, esconder a lateral e ligar a máquina de escrever.
     conforto: bool,
+    /// Digitar aspas e hifens e abrir a busca.
+    escrita: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -191,6 +193,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         foco: std::env::var_os("MD_NOVEL_TESTE_FOCO").is_some(),
         criar_estilo: std::env::var_os("MD_NOVEL_TESTE_CRIAR_ESTILO").is_some(),
         conforto: std::env::var_os("MD_NOVEL_TESTE_CONFORTO").is_some(),
+        escrita: std::env::var_os("MD_NOVEL_TESTE_ESCRITA").is_some(),
     })
 }
 

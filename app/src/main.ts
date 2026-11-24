@@ -10,6 +10,7 @@ import {
   atalhoDaTecla,
   DESLIGADO,
   LIGADO,
+  lerDesligado,
   lerLigado,
   lerZoom,
   rotuloDoZoom,
@@ -73,6 +74,7 @@ const botaoSairDoFoco = elemento<HTMLButtonElement>("sair-do-foco");
 const botaoDaLateral = elemento<HTMLButtonElement>("alternar-lateral");
 const botaoDaMaquina = elemento<HTMLButtonElement>("maquina");
 const botaoDoZoom = elemento<HTMLButtonElement>("zoom");
+const botaoDasAspas = elemento<HTMLButtonElement>("aspas");
 const avisos = elemento("avisos");
 const vazio = elemento("vazio");
 const textoDoVazio = elemento("texto-do-vazio");
@@ -148,6 +150,7 @@ const editor = criarEditor(folha, {
   aoSalvar: () => void gravador.salvarAgora(),
   aoSelecionar: mostrarSelecao,
   maquinaDeEscrever: () => maquinaLigada(),
+  tipografia: () => tipografiaLigada(),
 });
 
 // ---- Contagem de palavras: lateral, barra do capítulo e barra de status ----
@@ -499,6 +502,7 @@ async function diagnosticar(): Promise<void> {
         `depois de criar o estilo: ${medir(".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)")} avisos=${classes}`,
       );
     }
+    if (roteiro.escrita) await roteiroDaEscrita();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -522,6 +526,49 @@ async function diagnosticar(): Promise<void> {
     // De volta ao começo do capítulo, que é o que a captura do teste mostra.
     editor.view.scrollDOM.scrollTop = 0;
   }
+}
+
+/** Digita pelo caminho de entrada do navegador (não pela API do editor),
+ *  para as aspas e o travessão passarem por onde passam com o autor, e abre
+ *  a busca com a tecla. */
+async function roteiroDaEscrita(): Promise<void> {
+  const quadro = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  // Uma tecla por vez, com uma folga entre elas: é assim que o editor as
+  // recebe do autor. Coladas num bloco só, elas são texto colado, e texto
+  // colado não é trocado.
+  const digitar = async (texto: string) => {
+    for (const letra of texto) {
+      document.execCommand("insertText", false, letra);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    }
+  };
+  editor.focar();
+  await digitar(" \"oi\" -- d'");
+  await quadro();
+  registrar(`tipografia: ligada fim=[${editor.texto().slice(-10)}]`);
+  botaoDasAspas.click();
+  await digitar(" \"x\" --");
+  await quadro();
+  registrar(`tipografia: desligada fim=[${editor.texto().slice(-7)}] apertado=${botaoDasAspas.getAttribute("aria-pressed")}`);
+  botaoDasAspas.click();
+  editor.view.contentDOM.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true }),
+  );
+  await quadro();
+  const painel = editor.view.dom.querySelector(".cm-search");
+  const botoes = [...(painel?.querySelectorAll("button") ?? [])].map((botao) => botao.textContent).join("|");
+  registrar(
+    `busca: painel=${painel !== null} campo="${painel?.querySelector("input")?.getAttribute("placeholder") ?? ""}" botões=${botoes}`,
+  );
+  editor.buscarProximo("neblina");
+  registrar(`busca: achou="${editor.selecao()}"`);
+  // Por último, porque deixa um bloco de código aberto no fim do capítulo:
+  // dentro dele a tecla fica como foi digitada.
+  editor.digitarNoFim("\n\n```\n");
+  editor.focar();
+  await digitar('"c" --');
+  await quadro();
+  registrar(`tipografia: em código fim=[${editor.texto().slice(-6)}]`);
 }
 
 /** As teclas e a rolagem do autor, como eventos de verdade na janela, e o
@@ -576,6 +623,7 @@ interface RoteiroDeTeste {
   foco: boolean;
   criar_estilo: boolean;
   conforto: boolean;
+  escrita: boolean;
 }
 
 /** As contagens como estão escritas na tela. */
@@ -691,6 +739,15 @@ function definirMaquina(ligada: boolean): void {
   botaoDaMaquina.setAttribute("aria-pressed", String(ligada));
 }
 
+// Aspas curvas e travessão ao digitar: ligado de fábrica, e o botão da
+// barra de baixo desliga para quem prefere o sinal reto.
+const CHAVE_DAS_ASPAS = "md-novel.aspas";
+const tipografiaLigada = () => botaoDasAspas.getAttribute("aria-pressed") === "true";
+
+function definirTipografia(ligada: boolean): void {
+  botaoDasAspas.setAttribute("aria-pressed", String(ligada));
+}
+
 function fazerAtalho(atalho: Atalho): void {
   switch (atalho) {
     case "zoom-aumentar":
@@ -720,11 +777,17 @@ function fazerAtalho(atalho: Atalho): void {
 // Ao abrir: as escolhas guardadas valem antes de o livro aparecer.
 definirLateral(lerLigado(guardado(CHAVE_DA_LATERAL_ESCONDIDA)));
 definirMaquina(lerLigado(guardado(CHAVE_DA_MAQUINA)));
+definirTipografia(!lerDesligado(guardado(CHAVE_DAS_ASPAS)));
 aplicarZoom();
 
 botaoDaLateral.addEventListener("click", () => fazerAtalho("lateral"));
 botaoDaMaquina.addEventListener("click", () => fazerAtalho("maquina"));
 botaoDoZoom.addEventListener("click", () => fazerAtalho("zoom-restaurar"));
+botaoDasAspas.addEventListener("click", () => {
+  definirTipografia(!tipografiaLigada());
+  guardar(CHAVE_DAS_ASPAS, tipografiaLigada() ? LIGADO : DESLIGADO);
+  editor.focar();
+});
 
 /** A tecla que acompanha os atalhos: Cmd no Mac, Ctrl nos outros. No Linux a
  *  tecla Super é do gerenciador de janelas (no Hyprland, Super+rolagem troca
@@ -757,7 +820,11 @@ botaoSairDoFoco.addEventListener("click", () => definirFoco(false));
 window.addEventListener(
   "keydown",
   (evento) => {
-    const acao = teclaDoFoco(evento.key, focoLigado(), evento.isComposing);
+    // Com o cursor no painel de busca, o Esc fecha o painel (é do editor),
+    // não sai do modo foco.
+    const noPainelDaBusca = evento.target instanceof Element && evento.target.closest(".cm-panels") !== null;
+    const acao =
+      noPainelDaBusca && evento.key === "Escape" ? null : teclaDoFoco(evento.key, focoLigado(), evento.isComposing);
     if (acao !== null) {
       evento.preventDefault();
       evento.stopPropagation();
