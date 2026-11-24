@@ -147,3 +147,13 @@ export function converter(texto: string): { texto: string; mudancas: Mudanca[] }
   }
   return { texto: convertido, mudancas };
 }
+
+/** O que o app diz ao abrir um capítulo que tem sinais para converter;
+ *  `null` se não tem nenhum. É só a oferta: quem converte é o autor, no botão. */
+export function ofertaDeConversao(trocas: number): string | null {
+  if (trocas === 0) return null;
+  const quantos = String(trocas).replace(/\B(?=(\d{3})+$)/g, ".");
+  return trocas === 1
+    ? "Este capítulo tem 1 sinal escrito à moda antiga: hífen duplo no lugar do travessão, ou aspa reta. Quer trocar?"
+    : `Este capítulo tem ${quantos} sinais escritos à moda antiga: hifens duplos no lugar do travessão, ou aspas retas. Quer trocar?`;
+}

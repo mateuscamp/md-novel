@@ -48,6 +48,7 @@ import {
 } from "./resumo.ts";
 import { lerPreferencia, type Preferencia, proximaPreferencia, rotuloDaPreferencia, temaEfetivo } from "./tema.ts";
 import { contarPalavras } from "./texto.ts";
+import { ofertaDeConversao } from "./tipografia.ts";
 
 interface LivroAberto {
   pasta: string;
@@ -377,6 +378,7 @@ async function abrirCapitulo(nome: string, descartarMudancas = false): Promise<v
     editor.focar();
     registrar(`capítulo: ${nome}, ${editor.view.state.doc.lines} linhas`);
     botaoDeConverter.disabled = false;
+    oferecerConversao();
     guardarOnde();
   } catch (motivo) {
     avisar(comoErro(motivo).mensagem, "erro");
@@ -876,6 +878,22 @@ async function diagnosticar(): Promise<void> {
   registrar(`linha do corpo: ${medir(".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)")}`);
   registrar(`linha de estilo nomeado: ${medir(".cm-line[data-md-novel-estilo]")}`);
   registrar(`rolagem: área ${rolagem.clientHeight}px de ${rolagem.scrollHeight}px`);
+  // O cursor tem a altura da letra, não a da linha (entrelinha de 1,5). Mede-se
+  // numa linha do corpo: o capítulo abre com o cursor no título, de letra
+  // maior. Depois o cursor volta para onde estava.
+  const primeira = editor.view.contentDOM.querySelector(
+    ".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)",
+  );
+  const ondeEstava = editor.posicao();
+  if (primeira !== null) editor.view.dispatch({ selection: { anchor: editor.view.posAtDOM(primeira) + 1 } });
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  const cursor = editor.view.dom.querySelector(".cm-cursor-primary");
+  const alturaDoCursor = cursor === null ? null : Math.round(cursor.getBoundingClientRect().height);
+  editor.view.dispatch({ selection: { anchor: ondeEstava } });
+  registrar(
+    `cursor: altura=${alturaDoCursor ?? "ausente"}px letra=${primeira === null ? "ausente" : getComputedStyle(primeira).fontSize} linha=${primeira === null ? "ausente" : getComputedStyle(primeira).lineHeight}`,
+  );
   registrar(
     `conforto ao abrir: zoom=${rotuloDoZoom(zoom)} ${medidasDoZoom()} lateral=${getComputedStyle(elemento("lateral")).display} máquina=${maquinaLigada() ? "ligada" : "desligada"}`,
   );
@@ -956,6 +974,15 @@ async function roteiroDosParagrafos(): Promise<void> {
   const tecla = (key: string, ctrlKey = false) =>
     editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey, bubbles: true, cancelable: true }));
   const fim = (letras: number) => JSON.stringify(editor.texto().slice(-letras));
+  // O capítulo do teste abre com uma fala à moda antiga: o app oferece trocar.
+  const botaoDaOferta = ofertaDeConverter?.querySelector<HTMLButtonElement>("button:not(.fechar)");
+  const oferta = ofertaDeConverter?.querySelector("span")?.textContent ?? "ausente";
+  const antesDaOferta = editor.texto().includes('\\-- "Oi", disse.');
+  botaoDaOferta?.click();
+  await quadro();
+  registrar(
+    `oferta: "${oferta}" botão="${botaoDaOferta?.textContent ?? "ausente"}" antes=${antesDaOferta} depois=${editor.texto().includes("— “Oi”, disse.")} some=${ofertaDeConverter === null}`,
+  );
   // A linha em branco entre dois parágrafos que estão na tela.
   editor.view.scrollDOM.scrollTop = 0;
   await quadro();
@@ -1401,9 +1428,16 @@ botaoDaMaquina.addEventListener("click", () => fazerAtalho("maquina"));
 botaoDoZoom.addEventListener("click", () => fazerAtalho("zoom-restaurar"));
 // O que já estava escrito não é trocado ao digitar: o autor pede, para o
 // capítulo aberto, e desfaz com Ctrl+Z se não gostar.
-botaoDeConverter.addEventListener("click", () => {
+/** O aviso que oferece a conversão no capítulo aberto, e o que diz que ela foi feita. */
+let ofertaDeConverter: HTMLElement | null = null;
+let avisoDeConvertido: HTMLElement | null = null;
+
+function converterSinais(): void {
   const trocas = editor.converterSinais();
-  avisar(
+  ofertaDeConverter?.remove();
+  ofertaDeConverter = null;
+  avisoDeConvertido?.remove();
+  avisoDeConvertido = avisar(
     trocas === 0
       ? "Este capítulo não tem hifens duplos nem aspas retas para converter."
       : `Troquei ${numero(trocas)} ${trocas === 1 ? "sinal" : "sinais"} deste capítulo por travessão e aspas curvas. Ctrl+Z desfaz.`,
@@ -1411,7 +1445,20 @@ botaoDeConverter.addEventListener("click", () => {
   );
   registrar(`convertido: ${trocas}`);
   editor.focar();
-});
+}
+
+/** Ao abrir um capítulo que tem sinais à moda antiga, o app oferece trocar.
+ *  Só oferece: o botão do fim da barra de baixo passa despercebido, e o app
+ *  não muda o manuscrito sem o autor pedir. */
+function oferecerConversao(): void {
+  ofertaDeConverter?.remove();
+  avisoDeConvertido?.remove();
+  avisoDeConvertido = null;
+  const oferta = ofertaDeConversao(editor.sinaisAConverter());
+  ofertaDeConverter = oferta === null ? null : avisar(oferta, "", { rotulo: "Converter", fazer: converterSinais });
+}
+
+botaoDeConverter.addEventListener("click", converterSinais);
 botaoDasAspas.addEventListener("click", () => {
   definirTipografia(!tipografiaLigada());
   guardar(CHAVE_DAS_ASPAS, tipografiaLigada() ? LIGADO : DESLIGADO);
