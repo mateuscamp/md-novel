@@ -6,9 +6,9 @@ use crate::erro::ErroEstilo;
 use crate::modelo::{Alinhamento, Estilo, EstiloParagrafo};
 
 const CABECALHO: &str =
-    "/* Gerado pelo md-novel a partir do estilo.yaml. Não edite aqui: mude o estilo.yaml. */\n";
+    "/* Gerado pelo md Novel a partir do estilo.yaml. Não edite aqui: mude o estilo.yaml. */\n";
 
-/// Seletor CSS dos parágrafos do corpo. No editor do md-novel é
+/// Seletor CSS dos parágrafos do corpo. No editor do md Novel é
 /// `.md-novel-corpo`; em outro editor (Zettlr), o seletor da linha de texto dele.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeletorCss(String);

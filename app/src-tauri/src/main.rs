@@ -1,4 +1,4 @@
-//! md-novel, o programa de desktop. Adaptador fino: cada comando repassa
+//! md Novel, o programa de desktop. Adaptador fino: cada comando repassa
 //! para a `Sessao`, que é quem conhece o livro. Sem regra de estilo aqui.
 
 mod exportacao;
@@ -226,7 +226,7 @@ fn main() {
         ])
         .run(tauri::generate_context!());
     if let Err(erro) = resultado {
-        eprintln!("erro: a janela do md-novel não abriu: {erro}");
+        eprintln!("erro: a janela do md Novel não abriu: {erro}");
         std::process::exit(1);
     }
 }

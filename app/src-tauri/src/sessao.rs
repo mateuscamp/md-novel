@@ -140,7 +140,7 @@ fn montar(livro: &Livro) -> Result<LivroAberto, ErroDeComando> {
         Ok(None) => {
             avisos.push(
                 "Esta pasta não tem estilo.yaml: o editor está com a aparência padrão. \
-                 Copie o exemplos/estilo.yaml do md-novel para cá e ajuste."
+                 Copie o exemplos/estilo.yaml do md Novel para cá e ajuste."
                     .to_owned(),
             );
             (None, Vec::new())

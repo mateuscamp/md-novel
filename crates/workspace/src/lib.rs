@@ -1,4 +1,4 @@
-//! A pasta do livro. Toda gravação em disco do md-novel passa por aqui:
+//! A pasta do livro. Toda gravação em disco do md Novel passa por aqui:
 //! arquivo gerado (`SaidaPendente`) e, no app, capítulo salvo.
 //!
 //! Este crate não depende de tauri nem abre processo: o app e a linha de

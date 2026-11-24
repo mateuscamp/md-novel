@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "md-novel",
+  "productName": "md Novel",
   "version": "0.1.0",
   "identifier": "io.github.mateuscamp.md-novel",
   "build": {
@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "md-novel", "width": 1200, "height": 900, "minWidth": 720, "minHeight": 480 }],
+    "windows": [{ "title": "md Novel", "width": 1200, "height": 900, "minWidth": 720, "minHeight": 480 }],
     "security": {
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost",
       "dangerousDisableAssetCspModification": ["style-src"]

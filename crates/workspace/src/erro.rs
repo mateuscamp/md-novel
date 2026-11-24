@@ -31,7 +31,7 @@ pub enum ErroWorkspace {
     NaoEUtf8 { caminho: PathBuf },
 
     #[error(
-        "o capítulo {caminho:?} mistura finais de linha do Windows e do Unix; uniformize o arquivo antes de editar, para o md-novel não trocar linha que você não mexeu"
+        "o capítulo {caminho:?} mistura finais de linha do Windows e do Unix; uniformize o arquivo antes de editar, para o md Novel não trocar linha que você não mexeu"
     )]
     FimDeLinhaMisturado { caminho: PathBuf },
 

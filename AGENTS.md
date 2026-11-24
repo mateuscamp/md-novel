@@ -1,4 +1,4 @@
-# md-novel
+# md Novel
 
 Estilo único para um livro em Markdown: um `estilo.yaml` gera o CSS do editor
 e o reference.docx do Pandoc, e os capítulos .md soltos viram .docx.
@@ -27,6 +27,11 @@ comando. ADRs em `docs/adr/`.
 - Nunca abra janela na tela do autor sem ele pedir: nada de `--na-tela`, de
   rodar o binário do app direto nem de `cargo tauri dev` por conta própria
   (2026-11-23: as janelas do teste atrapalharam o trabalho dele).
+- Menu de aplicativos (só Linux): `make instalar` compila sem depuração e
+  copia o programa, o ícone e a entrada do menu para `~/.local`;
+  `make desinstalar` apaga esses três. Quem faz é `app/linux/instalar.sh`,
+  testado em `app/src-tauri/tests/instalar.rs` num prefixo temporário. Não
+  abre janela. Num teste, nunca no prefixo de verdade.
 - Linha de comando: `cargo run -p md-novel -- estilo estilo.yaml --css editor.css --docx reference.docx`
   e `cargo run -p md-novel -- exportar --estilo estilo.yaml --saida livro.docx cap1.md cap2.md`.
 
@@ -39,10 +44,15 @@ comando. ADRs em `docs/adr/`.
 | `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. Grava pelo `workspace`. |
 | `crates/cli` | adaptador fino | Lê argumentos, chama os crates. Sem regra de estilo. |
 | `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho: a pasta vem do seletor do sistema ou da linha de comando, e capítulo só pelo nome da lista. |
+| `app/linux` | o instalador do menu de aplicativos (`instalar.sh`, shell POSIX) | Só o `make instalar` e o `make desinstalar` chamam. Escreve três arquivos dentro do `PREFIXO` e mais nenhum, cada um por temporário + rename, os três preparados antes de publicar o primeiro. Nunca toca a pasta do livro. É a única gravação fora do `workspace`. |
 | `app/src` | a interface (TypeScript, CodeMirror 6) | Recebe o CSS pronto do Rust e não define tipografia do texto. O que o `estilo.yaml` ainda não cobre (títulos, marcadores `:::`) fica em `app.css`, com comentário dizendo isso. Regra testável vai em função pura com teste (`*.test.ts`). O tema e a moldura (`app.css`) não mudam a tipografia do texto. Dependência nova entra na lista de `fronteira.test.ts`, com o motivo no ADR 0003. |
 
 ## Regras
 
+- O projeto tem dois nomes. `md-novel`, sem espaço e sem maiúscula, é o de
+  pasta, comando, binário, identificador, classe de CSS e chave. "md Novel"
+  é o que uma pessoa lê: janela, menu, mensagem, README, documentação.
+  `app/src/nome.test.ts` confere a janela, a página e o README.
 - Decisão que muda estrutura, dependência, interface entre partes ou dono do
   dado passa pela skill /arquitetura-ai-first: ADR e fitness function antes de
   fechar. Decisão já tomada pelo autor não é reaberta sem evidência nova.
@@ -62,7 +72,9 @@ comando. ADRs em `docs/adr/`.
   `.docx` ou `.css`. Capítulo (`.md`) só é gravado por
   `workspace::Capitulo::salvar`, que recusa se o arquivo mudou no disco desde
   a leitura e não escreve se o texto é o mesmo. Comando com mais de uma
-  saída prepara todas antes de publicar a primeira.
+  saída prepara todas antes de publicar a primeira. A exceção é o
+  instalador (`app/linux/instalar.sh`): ele não é o app, grava só no
+  `PREFIXO` e segue a mesma disciplina por conta própria.
 - Abrir e salvar sem editar devolve os mesmos bytes: o editor trabalha em LF
   sem BOM, e o `workspace` devolve o arquivo no formato em que estava. Arquivo
   que não daria para devolver igual (finais de linha misturados, fora do
@@ -83,7 +95,7 @@ comando. ADRs em `docs/adr/`.
   continua na tela. O modo foco nunca esconde os avisos.
 - Caminho de imagem num capítulo vale a partir da pasta daquele capítulo
   (`+rebase_relative_paths`), não da pasta de onde o comando roda.
-- O único arquivo que o md-novel apaga sozinho é temporário dele mesmo:
+- O único arquivo que o md Novel apaga sozinho é temporário dele mesmo:
   `.md-novel-gravando-*` terminado em `.css`, `.docx` ou `.md`, arquivo comum,
   parado há mais de uma hora. Não alargue esse padrão.
 - Segurança da janela: o CSP só afrouxa `style-src` (o CodeMirror injeta CSS);

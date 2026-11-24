@@ -155,6 +155,6 @@ fn temporario_orfao_de_uma_execucao_interrompida_e_recolhido() {
             "capitulo antigo.md",
             "livro.docx"
         ],
-        "só o órfão antigo, com o prefixo exato do md-novel, pode sumir"
+        "só o órfão antigo, com o prefixo exato do md Novel, pode sumir"
     );
 }

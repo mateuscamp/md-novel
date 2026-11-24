@@ -1,4 +1,4 @@
-# md-novel
+# md Novel
 
 Um estilo só para o livro inteiro. Você escreve os capítulos em Markdown, um
 arquivo por capítulo, e descreve a tipografia uma vez num `estilo.yaml`: fonte,
@@ -11,7 +11,7 @@ livro, edita com a tipografia do `estilo.yaml`, conta as palavras, salva e
 exporta o .docx) e uma linha de comando, que gera o CSS, o reference.docx e
 também exporta.
 
-![A janela do md-novel com um capítulo aberto, no tema claro](docs/imagens/app-linux.png)
+![A janela do md Novel com um capítulo aberto, no tema claro](docs/imagens/app-linux.png)
 
 ![A mesma janela no tema escuro](docs/imagens/app-linux-escuro.png)
 
@@ -62,6 +62,19 @@ livro, ou sem nada e use "Abrir pasta…":
 ./target/release/md-novel-app ~/Dropbox/meu-livro
 ```
 
+No Linux, para ele aparecer no menu de aplicativos como "md Novel", rode da
+pasta do projeto, em vez do comando de compilar acima:
+
+```bash
+make instalar
+```
+
+Isso compila e copia três arquivos para `~/.local`: o programa
+(`bin/md-novel-app`), o ícone e a entrada do menu. Rode de novo depois de
+atualizar o projeto. `make desinstalar` apaga esses três arquivos; a escolha
+de tema, que o programa guarda em `~/.local/share/io.github.mateuscamp.md-novel`,
+fica. No Mac ainda não há instalação: abra pelo terminal.
+
 O que ele faz hoje:
 
 - Os capítulos são os arquivos `.md` da pasta, em ordem de nome. Nada é
@@ -93,7 +106,8 @@ O que ele faz hoje:
 
 O que ainda não faz: ordenar capítulos fora da ordem de nome, esconder a
 linha em branco entre parágrafos, dar aos títulos a cara do .docx e perceber
-sozinho, com o programa aberto, que um arquivo mudou. Não há instalador.
+sozinho, com o programa aberto, que um arquivo mudou. Não há pacote pronto
+para baixar: instalar é compilar.
 
 ## Uso da linha de comando
 
@@ -165,7 +179,7 @@ No Zettlr há limites que o programa de desktop já resolve em parte:
   assim que a tela mostra. O título sublinhado (uma linha de `===` ou `---`
   logo abaixo do texto) o programa ainda não reconhece na tela, mas o Pandoc
   sim: deixe uma linha em branco antes de um `---` de quebra de cena.
-- **Só de ida.** O md-novel não lê de volta o .docx revisado pela editora: as
+- **Só de ida.** O md Novel não lê de volta o .docx revisado pela editora: as
   mudanças voltam para os .md à mão ([ADR 0001](docs/adr/0001-exportar-so-de-ida-md-para-docx.md)).
 - **Fica de fora, por enquanto:** títulos, tamanho de página, margens e
   hifenização usam o padrão do Pandoc
