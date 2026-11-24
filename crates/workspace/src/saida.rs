@@ -119,7 +119,7 @@ fn resolver_link(destino: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Apaga temporário do md-novel que uma execução interrompida (Ctrl-C, queda
+/// Apaga temporário do md Novel que uma execução interrompida (Ctrl-C, queda
 /// de energia) deixou na pasta. Só arquivo comum, com o prefixo e a extensão
 /// exatos que este módulo cria, parado há mais de uma hora: nada do autor tem
 /// esse nome, e uma exportação em andamento em outra janela é mais nova.

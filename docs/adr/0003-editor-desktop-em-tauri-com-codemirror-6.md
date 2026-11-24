@@ -6,7 +6,7 @@
 
 ## Contexto
 
-O md-novel já compila o `estilo.yaml` em CSS e reference.docx e exporta pela
+O md Novel já compila o `estilo.yaml` em CSS e reference.docx e exporta pela
 linha de comando (ADR 0001 e 0002). O autor pediu um programa de desktop: abrir
 a pasta do livro (inclusive no Dropbox), editar os capítulos vendo a
 tipografia do livro e exportar, no Linux (Hyprland, RTX 4070) e no MacBook M1.
@@ -213,6 +213,33 @@ troca foi feita antes de existir instalador porque o identificador vira o
 nome das pastas de dados do app e a identidade dele no macOS: depois disso,
 trocar deixa para trás o que estiver guardado no nome antigo.
 
+## O nome e o menu de aplicativos (2026-11-23)
+
+O autor procurou o app no menu e não achou: só existia o binário dentro de
+`target/`. E disse como o projeto se chama: "md Novel" onde uma pessoa lê;
+`md-novel` é o nome de pasta e comando, sem espaço e sem maiúscula.
+
+- **Dois nomes, cada um no seu lugar.** "md Novel" na janela
+  (`productName` e título), na página, nas mensagens e na documentação.
+  `md-novel` continua em repositório, crates, binários, identificador,
+  classes de CSS e chaves guardadas: nada do que já está em disco muda de
+  nome.
+- **`make instalar`, só no Linux.** Compila sem depuração e copia três
+  arquivos para `~/.local` (ou outro `PREFIXO`): `bin/md-novel-app`, o
+  ícone e `share/applications/io.github.mateuscamp.md-novel.desktop`. Quem
+  copia é `app/linux/instalar.sh`: prepara os três antes de publicar o
+  primeiro, troca cada um por temporário e rename, e recusa prefixo que não
+  cabe na linha `Exec`. `make desinstalar` apaga os três pelo caminho exato.
+- **O empacotador do Tauri continua desligado** (`bundle.active: false`).
+  Ligá-lo daria `.deb`, AppImage e `.app`, mas pede ícones em todos os
+  tamanhos, assinatura no Mac e uma decisão de distribuição que ninguém
+  pediu. O custo aceito: no Mac o app segue aberto pelo terminal, e a nota
+  do Pandoc fora do PATH (segunda fatia) continua valendo.
+- **A entrada do menu aponta para o caminho inteiro do programa**, e o
+  ícone também: `~/.local/bin` nem sempre está no PATH de quem abre o menu.
+  Mover a pasta depois de instalar quebra a entrada; `make instalar` de
+  novo conserta.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -222,6 +249,8 @@ trocar deixa para trás o que estiver guardado no nome antigo.
 | Contagem e título iguais no Rust e na interface | `crates/workspace/tests/texto.rs` e `app/src/texto.test.ts`, os dois lendo `crates/workspace/tests/fixtures/` | `make check` | um dos lados dá outro número ou outro título para um caso do arquivo |
 | Os casos de título são o que o Pandoc lê | `crates/exportar/tests/titulos_pandoc.rs`, que passa cada caso de `titulos.txt` pelo Pandoc | `make check` | o arquivo de casos afirma um título que o Pandoc não dá |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
+| O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
+| Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |
 | A moldura na janela de verdade | `app/teste_funcional.py`, passadas 1, 4, 5 e 6 | à mão, fora do CI | contagem na tela diferente da conta do teste, título colado com tamanho de título, tema sem efeito ou esquecido ao reabrir, barras visíveis no modo foco ou aviso escondido nele |
 
 Regra derivada no `AGENTS.md`, quando aceito: o app (`src-tauri`) é

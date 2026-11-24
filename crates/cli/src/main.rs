@@ -1,4 +1,4 @@
-//! Linha de comando fina do md-novel: lê os argumentos, chama `estilo` e
+//! Linha de comando fina do md Novel: lê os argumentos, chama `estilo` e
 //! `exportar` e grava as saídas. Regra de estilo e chamada ao Pandoc não moram aqui.
 
 use std::error::Error;
