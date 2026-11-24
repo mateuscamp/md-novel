@@ -21,13 +21,15 @@
     </aside>
     <main>
       <header id="barra">
+        <button id="alternar-lateral" type="button" title="Esconder ou mostrar a lateral (F9)" aria-label="Esconder ou mostrar a lateral" aria-pressed="false">☰</button>
         <div id="capitulo">
           <span id="nome-do-capitulo"></span>
           <span id="arquivo-do-capitulo"></span>
         </div>
         <div id="acoes">
           <button id="tema" type="button" title="Trocar o tema: do sistema, claro ou escuro">Tema: sistema</button>
-          <button id="foco" type="button" title="Modo foco: só a folha na tela (F8)">Foco</button>
+          <button id="maquina" type="button" title="Máquina de escrever: a linha em que você escreve fica no meio da tela (F10)" aria-pressed="false">Máquina</button>
+          <button id="foco" type="button" title="Modo foco: só a folha na tela (F8). Tela cheia: F11">Foco</button>
           <button id="exportar" type="button" disabled>Exportar .docx…</button>
           <button id="salvar" type="button" disabled>Salvar</button>
         </div>
@@ -45,6 +47,7 @@
         <span id="palavras-da-selecao"></span>
         <span id="palavras-do-livro"></span>
         <span id="estado" role="status"></span>
+        <button id="zoom" type="button" title="Zoom da janela: Ctrl+rolagem, Ctrl+= e Ctrl+-. Clique aqui ou Ctrl+0 para voltar a 100%">100%</button>
       </footer>
     </main>
     <button id="sair-do-foco" type="button" title="Sair do modo foco (Esc ou F8)" hidden>Sair do foco</button>

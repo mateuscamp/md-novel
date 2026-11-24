@@ -3,6 +3,18 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  type AcaoDeZoom,
+  acaoDaRoda,
+  type Atalho,
+  atalhoDaTecla,
+  DESLIGADO,
+  LIGADO,
+  lerLigado,
+  lerZoom,
+  rotuloDoZoom,
+  zoomDepoisDe,
+} from "./conforto.ts";
 import { criarEditor } from "./editor.ts";
 import { teclaDoFoco } from "./foco.ts";
 import { fonteInstalada, linhaSimples } from "./fonte.ts";
@@ -58,6 +70,9 @@ const botaoSalvar = elemento<HTMLButtonElement>("salvar");
 const botaoExportar = elemento<HTMLButtonElement>("exportar");
 const botaoTema = elemento<HTMLButtonElement>("tema");
 const botaoSairDoFoco = elemento<HTMLButtonElement>("sair-do-foco");
+const botaoDaLateral = elemento<HTMLButtonElement>("alternar-lateral");
+const botaoDaMaquina = elemento<HTMLButtonElement>("maquina");
+const botaoDoZoom = elemento<HTMLButtonElement>("zoom");
 const avisos = elemento("avisos");
 const vazio = elemento("vazio");
 const textoDoVazio = elemento("texto-do-vazio");
@@ -132,6 +147,7 @@ const editor = criarEditor(folha, {
   },
   aoSalvar: () => void gravador.salvarAgora(),
   aoSelecionar: mostrarSelecao,
+  maquinaDeEscrever: () => maquinaLigada(),
 });
 
 // ---- Contagem de palavras: lateral, barra do capítulo e barra de status ----
@@ -452,6 +468,10 @@ async function diagnosticar(): Promise<void> {
   registrar(`linha do corpo: ${medir(".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)")}`);
   registrar(`linha de estilo nomeado: ${medir(".cm-line[data-md-novel-estilo]")}`);
   registrar(`rolagem: área ${rolagem.clientHeight}px de ${rolagem.scrollHeight}px`);
+  await zoomEmCurso;
+  registrar(
+    `conforto ao abrir: zoom=${rotuloDoZoom(zoom)} largura=${window.innerWidth} lateral=${getComputedStyle(elemento("lateral")).display} máquina=${maquinaLigada() ? "ligada" : "desligada"}`,
+  );
   const roteiro = await invoke<RoteiroDeTeste | null>("roteiro_de_teste");
   if (roteiro) {
     // O tema do roteiro vale só para esta janela: não é guardado.
@@ -479,6 +499,7 @@ async function diagnosticar(): Promise<void> {
         `depois de criar o estilo: ${medir(".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)")} avisos=${classes}`,
       );
     }
+    if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
       await invoke("teste_pedir_para_fechar");
@@ -503,6 +524,48 @@ async function diagnosticar(): Promise<void> {
   }
 }
 
+/** As teclas e a rolagem do autor, como eventos de verdade na janela, e o
+ *  que a tela mostra depois de cada uma. */
+async function roteiroDoConforto(): Promise<void> {
+  const quadro = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const tecla = (key: string, ctrlKey = false) =>
+    window.dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey, bubbles: true, cancelable: true }));
+  /** Distância entre o cursor e o meio da área que rola. */
+  const desvioDoCursor = (): string => {
+    const cursor = editor.view.coordsAtPos(editor.view.state.selection.main.head);
+    const area = editor.view.scrollDOM.getBoundingClientRect();
+    if (cursor === null) return "sem cursor";
+    return `${Math.round(Math.abs((cursor.top + cursor.bottom) / 2 - (area.top + area.bottom) / 2))}px de ${Math.round(area.height)}px`;
+  };
+  const larguraAntes = window.innerWidth;
+  tecla("=", true);
+  tecla("=", true);
+  // Mais velho que o intervalo da roda: o primeiro evento sempre vale.
+  window.dispatchEvent(new WheelEvent("wheel", { deltaY: 120, ctrlKey: true, bubbles: true, cancelable: true }));
+  await zoomEmCurso;
+  await quadro();
+  registrar(`zoom: botão="${botaoDoZoom.textContent}" largura ${larguraAntes} -> ${window.innerWidth}`);
+  tecla("F9");
+  registrar(`lateral: ${getComputedStyle(elemento("lateral")).display} apertado=${botaoDaLateral.getAttribute("aria-pressed")}`);
+  await quadro();
+  await quadro();
+  const antes = desvioDoCursor();
+  tecla("F10");
+  await quadro();
+  await quadro();
+  await quadro();
+  registrar(`máquina: ${maquinaLigada() ? "ligada" : "desligada"} antes=${antes} depois=${desvioDoCursor()}`);
+  // Entra e sai: no display de teste não há gerenciador de janelas para
+  // conferir o tamanho, só que o pedido é aceito.
+  try {
+    const entrou = await invoke<boolean>("alternar_tela_cheia");
+    const saiu = await invoke<boolean>("alternar_tela_cheia");
+    registrar(`tela cheia: pedido aceito (${entrou} e depois ${saiu})`);
+  } catch (motivo) {
+    registrar(`tela cheia: recusado: ${comoErro(motivo).mensagem}`);
+  }
+}
+
 /** O que a interface faz sozinha no teste funcional (`RoteiroDeTeste` do Rust). */
 interface RoteiroDeTeste {
   digitar: string;
@@ -512,6 +575,7 @@ interface RoteiroDeTeste {
   cliques_no_tema: number;
   foco: boolean;
   criar_estilo: boolean;
+  conforto: boolean;
 }
 
 /** As contagens como estão escritas na tela. */
@@ -566,6 +630,127 @@ function definirFoco(ligado: boolean): void {
   if (capituloAtual !== null) editor.focar();
 }
 
+// ---- Conforto: zoom, lateral, máquina de escrever e tela cheia ----
+
+// Como o tema, estas escolhas ficam no armazenamento da janela, fora da
+// pasta do livro.
+const CHAVE_DO_ZOOM = "md-novel.zoom";
+const CHAVE_DA_LATERAL_ESCONDIDA = "md-novel.lateral-escondida";
+const CHAVE_DA_MAQUINA = "md-novel.maquina";
+
+function guardado(chave: string): string | null {
+  try {
+    return window.localStorage.getItem(chave);
+  } catch {
+    return null;
+  }
+}
+
+function guardar(chave: string, valor: string): void {
+  try {
+    window.localStorage.setItem(chave, valor);
+  } catch {
+    // Não deu para guardar: a escolha vale até a janela fechar.
+  }
+}
+
+let zoom = lerZoom(guardado(CHAVE_DO_ZOOM));
+/** O pedido de zoom em curso, para o teste funcional esperar por ele. */
+let zoomEmCurso: Promise<void> = Promise.resolve();
+
+/** O zoom é da janela inteira, como o de um navegador: quem aplica é o Rust. */
+function aplicarZoom(): void {
+  botaoDoZoom.textContent = rotuloDoZoom(zoom);
+  zoomEmCurso = invoke("definir_zoom", { porCento: zoom }).then(
+    () => undefined,
+    (motivo: unknown) => void avisar(comoErro(motivo).mensagem, "erro"),
+  );
+}
+
+function mudarZoom(acao: AcaoDeZoom): void {
+  const novo = zoomDepoisDe(zoom, acao);
+  if (novo === zoom) return;
+  zoom = novo;
+  guardar(CHAVE_DO_ZOOM, String(zoom));
+  aplicarZoom();
+}
+
+const lateralEscondida = () => document.documentElement.dataset.lateral === "escondida";
+
+function definirLateral(escondida: boolean): void {
+  if (escondida) document.documentElement.dataset.lateral = "escondida";
+  else delete document.documentElement.dataset.lateral;
+  botaoDaLateral.setAttribute("aria-pressed", String(escondida));
+}
+
+const maquinaLigada = () => document.documentElement.dataset.maquina === "ligada";
+
+function definirMaquina(ligada: boolean): void {
+  if (ligada) document.documentElement.dataset.maquina = "ligada";
+  else delete document.documentElement.dataset.maquina;
+  botaoDaMaquina.setAttribute("aria-pressed", String(ligada));
+}
+
+function fazerAtalho(atalho: Atalho): void {
+  switch (atalho) {
+    case "zoom-aumentar":
+      mudarZoom("aumentar");
+      break;
+    case "zoom-diminuir":
+      mudarZoom("diminuir");
+      break;
+    case "zoom-restaurar":
+      mudarZoom("restaurar");
+      break;
+    case "lateral":
+      definirLateral(!lateralEscondida());
+      guardar(CHAVE_DA_LATERAL_ESCONDIDA, lateralEscondida() ? LIGADO : DESLIGADO);
+      break;
+    case "maquina":
+      definirMaquina(!maquinaLigada());
+      guardar(CHAVE_DA_MAQUINA, maquinaLigada() ? LIGADO : DESLIGADO);
+      if (maquinaLigada()) editor.centrar();
+      break;
+    case "tela-cheia":
+      void invoke("alternar_tela_cheia").catch((motivo: unknown) => avisar(comoErro(motivo).mensagem, "erro"));
+      break;
+  }
+}
+
+// Ao abrir: as escolhas guardadas valem antes de o livro aparecer.
+definirLateral(lerLigado(guardado(CHAVE_DA_LATERAL_ESCONDIDA)));
+definirMaquina(lerLigado(guardado(CHAVE_DA_MAQUINA)));
+aplicarZoom();
+
+botaoDaLateral.addEventListener("click", () => fazerAtalho("lateral"));
+botaoDaMaquina.addEventListener("click", () => fazerAtalho("maquina"));
+botaoDoZoom.addEventListener("click", () => fazerAtalho("zoom-restaurar"));
+
+/** A tecla que acompanha os atalhos: Cmd no Mac, Ctrl nos outros. No Linux a
+ *  tecla Super é do gerenciador de janelas (no Hyprland, Super+rolagem troca
+ *  de área de trabalho), e com Alt a tecla é um caractere do teclado. */
+const NO_MAC = /mac/i.test(navigator.platform);
+const comModificador = (evento: KeyboardEvent | WheelEvent): boolean =>
+  (NO_MAC ? evento.metaKey : evento.ctrlKey) && !evento.altKey;
+
+/** A rolagem do touchpad manda dezenas de eventos por gesto: um passo de
+ *  zoom a cada intervalo, não um por evento. */
+const INTERVALO_DA_RODA_MS = 80;
+let ultimaRoda = 0;
+window.addEventListener(
+  "wheel",
+  (evento) => {
+    const acao = acaoDaRoda(evento.deltaY, comModificador(evento));
+    if (acao === null) return;
+    // Com Ctrl a rolagem é do zoom: o texto não rola junto.
+    evento.preventDefault();
+    if (evento.timeStamp - ultimaRoda < INTERVALO_DA_RODA_MS) return;
+    ultimaRoda = evento.timeStamp;
+    mudarZoom(acao);
+  },
+  { passive: false, capture: true },
+);
+
 elemento("foco").addEventListener("click", () => definirFoco(true));
 botaoSairDoFoco.addEventListener("click", () => definirFoco(false));
 // Na fase de captura: a tecla chega aqui antes do editor.
@@ -573,10 +758,17 @@ window.addEventListener(
   "keydown",
   (evento) => {
     const acao = teclaDoFoco(evento.key, focoLigado(), evento.isComposing);
-    if (acao === null) return;
+    if (acao !== null) {
+      evento.preventDefault();
+      evento.stopPropagation();
+      definirFoco(acao === "alternar" ? !focoLigado() : false);
+      return;
+    }
+    const atalho = atalhoDaTecla(evento.key, comModificador(evento), evento.isComposing);
+    if (atalho === null) return;
     evento.preventDefault();
     evento.stopPropagation();
-    definirFoco(acao === "alternar" ? !focoLigado() : false);
+    fazerAtalho(atalho);
   },
   true,
 );

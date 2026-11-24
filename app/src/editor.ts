@@ -16,6 +16,8 @@ export interface Editor {
   /** O texto selecionado; vazio se não há seleção. */
   selecao(): string;
   focar(): void;
+  /** Leva a linha do cursor para o meio da tela. */
+  centrar(): void;
   /** Digita no fim do texto, como o autor faria. Usado pelo teste funcional. */
   digitarNoFim(texto: string): void;
   readonly view: EditorView;
@@ -80,9 +82,26 @@ export interface AoEditar {
   aoSalvar(): void;
   /** A seleção mudou, com ou sem mudança no texto. */
   aoSelecionar(): void;
+  /** A máquina de escrever está ligada: a linha do cursor vai para o meio. */
+  maquinaDeEscrever(): boolean;
 }
 
-export function criarEditor(pai: HTMLElement, { aoMudar, aoSalvar, aoSelecionar }: AoEditar): Editor {
+export function criarEditor(
+  pai: HTMLElement,
+  { aoMudar, aoSalvar, aoSelecionar, maquinaDeEscrever }: AoEditar,
+): Editor {
+  // Um pedido de centro por quadro: digitar depressa não empilha rolagens.
+  let centroPedido = false;
+  const centrar = (view: EditorView): void => {
+    if (centroPedido) return;
+    centroPedido = true;
+    requestAnimationFrame(() => {
+      centroPedido = false;
+      // Só o efeito de rolagem: não muda texto nem seleção, então não volta
+      // a pedir centro.
+      view.dispatch({ effects: EditorView.scrollIntoView(view.state.selection.main.head, { y: "center" }) });
+    });
+  };
   const extensoes: Extension = [
     EditorView.lineWrapping,
     history(),
@@ -100,6 +119,13 @@ export function criarEditor(pai: HTMLElement, { aoMudar, aoSalvar, aoSelecionar 
     EditorView.updateListener.of((atualizacao) => {
       if (atualizacao.docChanged) aoMudar();
       if (atualizacao.selectionSet) aoSelecionar();
+      // Máquina de escrever: digitar ou andar com o teclado leva a linha
+      // para o meio. Clicar e arrastar com o mouse não: a tela fugiria de
+      // debaixo do ponteiro.
+      const peloMouse = atualizacao.transactions.some((transacao) => transacao.isUserEvent("select.pointer"));
+      if (maquinaDeEscrever() && (atualizacao.docChanged || atualizacao.selectionSet) && !peloMouse) {
+        centrar(atualizacao.view);
+      }
     }),
     EditorView.contentAttributes.of({ spellcheck: "true", lang: "pt-BR" }),
   ];
@@ -114,6 +140,7 @@ export function criarEditor(pai: HTMLElement, { aoMudar, aoSalvar, aoSelecionar 
         .map((trecho) => view.state.sliceDoc(trecho.from, trecho.to))
         .join("\n"),
     focar: () => view.focus(),
+    centrar: () => centrar(view),
     digitarNoFim: (texto) => {
       const fim = view.state.doc.length;
       view.dispatch({

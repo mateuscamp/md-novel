@@ -110,6 +110,15 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   min-width: 0; flex-shrink: 2;
 }
 #acoes { display: flex; gap: 6px; }
+/* O botão ligado (máquina de escrever) fica marcado. */
+#acoes button[aria-pressed="true"] { background: var(--destaque-fundo); border-color: var(--destaque); }
+#alternar-lateral {
+  flex: none; padding: 3px 9px; border: 1px solid var(--borda); border-radius: 6px;
+  background: transparent; cursor: pointer; font-size: 15px; line-height: 1.2;
+}
+#alternar-lateral:hover { background: var(--realce); }
+/* A lateral escondida pelo autor (F9). O modo foco esconde por conta própria. */
+:root[data-lateral="escondida"] #lateral { display: none; }
 
 #avisos:empty { display: none; }
 #avisos p {
@@ -136,6 +145,8 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #status span:empty { display: none; }
 #estado { margin-left: auto; }
 #estado.erro { color: var(--erro-tinta); font-weight: 600; }
+#zoom { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
+#zoom:hover { background: var(--realce); }
 
 /* ---- A folha ---- */
 
@@ -186,6 +197,10 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .md-novel-citacao, .md-novel-comentario { color: var(--tinta-fraca); }
 /* Por último: o sinal dentro de um trecho em negrito ou riscado continua leve. */
 .md-novel-sinal { color: var(--tinta-apagada); font-weight: 400; text-decoration: none; }
+
+/* Máquina de escrever: folga embaixo para a última linha do capítulo poder
+   subir até o meio da tela. Quem rola é o `editor.ts`. */
+:root[data-maquina="ligada"] #folha .cm-content { padding-bottom: 50vh; }
 
 /* ---- Modo foco: só a folha ---- */
 

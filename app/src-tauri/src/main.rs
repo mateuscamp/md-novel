@@ -2,6 +2,7 @@
 //! para a `Sessao`, que é quem conhece o livro. Sem regra de estilo aqui.
 
 mod exportacao;
+mod janela;
 mod sessao;
 
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, Window, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 use workspace::Gravacao;
 
@@ -44,6 +45,29 @@ fn livro_atual(estado: State<'_, Estado>) -> Result<Option<LivroAberto>, ErroDeC
 #[tauri::command(async)]
 fn criar_estilo(estado: State<'_, Estado>) -> Result<LivroAberto, ErroDeComando> {
     estado.sessao().criar_estilo()
+}
+
+/// Zoom da janela inteira, como o de um navegador. A página manda só o por
+/// cento; a faixa é conferida em `janela::fator_de_zoom`.
+#[tauri::command]
+fn definir_zoom(janela: WebviewWindow, por_cento: u32) -> Result<(), ErroDeComando> {
+    let fator = janela::fator_de_zoom(por_cento)?;
+    janela.set_zoom(fator).map_err(|erro| ErroDeComando {
+        codigo: "erro",
+        mensagem: format!("não consegui mudar o zoom da janela: {erro}"),
+    })
+}
+
+/// Entra na tela cheia ou sai dela. Devolve se a janela ficou em tela cheia.
+#[tauri::command]
+fn alternar_tela_cheia(janela: Window) -> Result<bool, ErroDeComando> {
+    let falhou = |erro: tauri::Error| ErroDeComando {
+        codigo: "erro",
+        mensagem: format!("não consegui mudar a tela cheia: {erro}"),
+    };
+    let cheia = !janela.is_fullscreen().map_err(falhou)?;
+    janela.set_fullscreen(cheia).map_err(falhou)?;
+    Ok(cheia)
 }
 
 /// Mostra o seletor de pasta do sistema e abre a pasta escolhida. A página
@@ -145,6 +169,8 @@ struct RoteiroDeTeste {
     foco: bool,
     /// Criar o estilo.yaml pelo botão do aviso, depois de digitar.
     criar_estilo: bool,
+    /// Usar o zoom, esconder a lateral e ligar a máquina de escrever.
+    conforto: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -164,6 +190,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
             .unwrap_or(0),
         foco: std::env::var_os("MD_NOVEL_TESTE_FOCO").is_some(),
         criar_estilo: std::env::var_os("MD_NOVEL_TESTE_CRIAR_ESTILO").is_some(),
+        conforto: std::env::var_os("MD_NOVEL_TESTE_CONFORTO").is_some(),
     })
 }
 
@@ -227,6 +254,8 @@ fn main() {
             livro_atual,
             escolher_pasta,
             criar_estilo,
+            definir_zoom,
+            alternar_tela_cheia,
             abrir_capitulo,
             salvar_capitulo,
             exportar_livro,
