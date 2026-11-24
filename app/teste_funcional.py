@@ -4,8 +4,8 @@ chegou ao disco e o que o navegador aplicou.
 
 Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
 
-`--passada=N` roda só a passada N (de 1 a 13), para conferir uma mudança sem
-esperar as outras; dizer que a interface funciona pede as treze.
+`--passada=N` roda só a passada N (de 1 a 14), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as catorze.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
@@ -13,7 +13,7 @@ gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
 passadas 4, 5 e 12 gravam ao lado dele `<nome>-escuro.png`, `<nome>-foco.png`
 e `<nome>-corretor.png`.
 
-Treze passadas:
+Catorze passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -44,6 +44,9 @@ Treze passadas:
 13. painel de estilo: mudar o tamanho e o alinhamento no painel muda o texto
     na hora e o estilo.yaml; o estilo nomeado herda; cria-se e apaga-se um
     estilo; um valor que o Word não guarda fica só no aviso do painel.
+14. parágrafos como no Word: a linha em branco entre dois parágrafos não
+    ocupa espaço, Enter cria parágrafo (com a linha em branco no arquivo),
+    Backspace junta, e o botão converte `\\--` e aspas retas, com desfazer.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -177,6 +180,7 @@ class App:
         corretor: bool = False,
         lingua_do_corretor: str | None = None,
         painel_de_estilo: bool = False,
+        paragrafos: bool = False,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -214,6 +218,8 @@ class App:
             ambiente["MD_NOVEL_TESTE_CORRETOR"] = "1"
         if painel_de_estilo:
             ambiente["MD_NOVEL_TESTE_PAINEL_DE_ESTILO"] = "1"
+        if paragrafos:
+            ambiente["MD_NOVEL_TESTE_PARAGRAFOS"] = "1"
         ambiente.pop("MD_NOVEL_TESTE_LINGUA_DO_CORRETOR", None)
         if lingua_do_corretor is not None:
             ambiente["MD_NOVEL_TESTE_LINGUA_DO_CORRETOR"] = lingua_do_corretor
@@ -731,8 +737,8 @@ def pontos_vermelhos(imagem: pathlib.Path) -> int:
     O traço é fino e suavizado: sobre o papel claro ele sai rosado, perto de
     (255, 150, 146). Conta-se só o vermelho cheio (250 ou mais): a borda
     colorida das letras, que o desenho de fonte para tela de cristal líquido
-    deixa, é mais escura e fica de fora. Medido em 2026-11-24: 177 pontos
-    para duas palavras, nenhum no resto da tela."""
+    deixa, é quase toda mais escura. O que sobra dela varia com a fonte, e
+    por isso quem usa este número compara antes e depois."""
     saida = subprocess.run(
         [
             "magick",
@@ -778,12 +784,15 @@ def passada_do_corretor(binario: str, captura: str | None, falhas: list[str]) ->
                 shutil.copyfile(depois, base.with_name(f"{base.stem}-corretor{base.suffix}"))
         finally:
             app.encerrar()
+        avisos_com_dicionario = re.search(r"avisos=(\d+)", app.linha_com("livro:"))
         if "corretor: línguas=pt_BR aviso=não" not in app.linha_com("corretor: línguas"):
             falhas.append(f"passada 12: o dicionário pt_BR não foi carregado: {app.linha_com('corretor: línguas')!r}")
         vermelho_antes, vermelho_depois = pontos_vermelhos(antes), pontos_vermelhos(depois)
         print(f"  pontos vermelhos na tela: {vermelho_antes} antes, {vermelho_depois} depois")
-        # Duas palavras sublinhadas dão mais de cem pontos; o texto certo, nenhum.
-        if vermelho_antes > 30 or vermelho_depois - vermelho_antes < 100:
+        # O que conta é a diferença: a letra do livro deixa alguns pontos dessa
+        # cor na tela (46 com a EB Garamond), e duas palavras sublinhadas somam
+        # 74 com ela e 170 com a letra de reserva. Sem corretor, a diferença é zero.
+        if vermelho_depois - vermelho_antes < 50:
             falhas.append(
                 f"passada 12: as palavras erradas não ganharam sublinhado vermelho ({vermelho_antes} pontos antes, {vermelho_depois} depois)"
             )
@@ -797,7 +806,14 @@ def passada_do_corretor(binario: str, captura: str | None, falhas: list[str]) ->
             app.encerrar()
         if "corretor: línguas= aviso=sim" not in app.linha_com("corretor: línguas"):
             falhas.append(f"passada 12: sem dicionário o app não avisou: {app.linha_com('corretor: línguas')!r}")
-        if "avisos=2" not in app.linha_com("livro:"):
+        # Um aviso a mais do que com o dicionário (os de fonte que falta, se
+        # houver, aparecem nas duas janelas).
+        avisos_sem_dicionario = re.search(r"avisos=(\d+)", app.linha_com("livro:"))
+        if (
+            avisos_com_dicionario is None
+            or avisos_sem_dicionario is None
+            or int(avisos_sem_dicionario[1]) != int(avisos_com_dicionario[1]) + 1
+        ):
             falhas.append(f"passada 12: o aviso do corretor não está na tela: {app.linha_com('livro:')!r}")
 
 
@@ -848,6 +864,32 @@ def passada_do_painel_de_estilo(binario: str, captura: str | None, falhas: list[
         conferir_disco(pasta, original, falhas, "passada 13")
 
 
+def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
+    print("passada 14: parágrafos como no Word e conversão dos sinais")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
+        pasta = pathlib.Path(temporaria)
+        montar_livro(pasta)
+        app = App(binario, pasta, paragrafos=True)
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 14: a interface não chegou ao fim do roteiro")
+                return
+        finally:
+            app.encerrar()
+        medida = re.search(r"separadoras=(\d+) altura=(\S+) vão=(-?\d+)px", app.linha_com("parágrafos: separadoras"))
+        # A linha em branco some, e um parágrafo encosta no outro.
+        if medida is None or int(medida[1]) < 3 or medida[2] != "0" or abs(int(medida[3])) > 1:
+            falhas.append(f"passada 14: a linha em branco entre parágrafos ainda ocupa espaço: {app.linha_com('parágrafos: separadoras')!r}")
+        if 'enter fim=".\\n\\nNovo."' not in app.linha_com("parágrafos: enter"):
+            falhas.append(f"passada 14: Enter não criou parágrafo com a linha em branco: {app.linha_com('parágrafos: enter')!r}")
+        if 'backspace fim="al.Novo."' not in app.linha_com("parágrafos: backspace"):
+            falhas.append(f"passada 14: Backspace no começo do parágrafo não juntou com o de cima: {app.linha_com('parágrafos: backspace')!r}")
+        conversao = app.linha_com("converter:")
+        esperado = 'antes="\\\\-- \\"Oi\\", disse." depois="— “Oi”, disse." desfeito="\\\\-- \\"Oi\\", disse."'
+        if esperado not in conversao or "convertido: 3" not in app.linha_com("convertido:"):
+            falhas.append(f"passada 14: converter ou desfazer: {conversao!r} {app.linha_com('convertido:')!r}")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -877,11 +919,11 @@ def principal() -> int:
     argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
     so_a_passada = None
     for opcao in opcoes:
-        escolhida = re.fullmatch(r"--passada=([1-9]|1[0123])", opcao)
+        escolhida = re.fullmatch(r"--passada=([1-9]|1[01234])", opcao)
         if escolhida is not None:
             so_a_passada = int(escolhida[1])
         elif opcao != "--na-tela":
-            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 13")
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 14")
             return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
@@ -909,6 +951,7 @@ def principal() -> int:
         lambda: passada_do_capitulo_novo(binario, falhas),
         lambda: passada_do_corretor(binario, captura, falhas),
         lambda: passada_do_painel_de_estilo(binario, captura, falhas),
+        lambda: passada_dos_paragrafos(binario, falhas),
     ]
     for numero, passada in enumerate(passadas, start=1):
         if so_a_passada is None or so_a_passada == numero:

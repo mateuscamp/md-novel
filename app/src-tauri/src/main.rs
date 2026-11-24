@@ -309,6 +309,8 @@ struct RoteiroDeTeste {
     corretor: bool,
     /// Mudar o estilo pelo painel.
     painel_de_estilo: bool,
+    /// Medir a linha em branco escondida, criar e juntar parágrafo, converter sinais.
+    paragrafos: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -334,6 +336,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         capitulo_novo: std::env::var_os("MD_NOVEL_TESTE_CAPITULO_NOVO").is_some(),
         corretor: std::env::var_os("MD_NOVEL_TESTE_CORRETOR").is_some(),
         painel_de_estilo: std::env::var_os("MD_NOVEL_TESTE_PAINEL_DE_ESTILO").is_some(),
+        paragrafos: std::env::var_os("MD_NOVEL_TESTE_PARAGRAFOS").is_some(),
     })
 }
 
