@@ -21,6 +21,12 @@ serde.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 
+# O corretor ortográfico (ADR 0003): ligar a correção do WebKitGTK pede a API
+# dele. É a mesma versão que o Tauri já traz, travada, para o tipo do WebView
+# ser o mesmo dos dois lados. No Mac o WebView do sistema já corrige.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "=2.0.2"
+
 [dev-dependencies]
 tempfile.workspace = true
 zip.workspace = true

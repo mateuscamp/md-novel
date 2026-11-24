@@ -45,6 +45,12 @@ interface LivroAberto {
   aviso_sem_estilo: string | null;
 }
 
+/** O que o corretor ortográfico carregou ao abrir o app (`EstadoDoCorretor` do Rust). */
+interface EstadoDoCorretor {
+  linguas: string[];
+  aviso: string | null;
+}
+
 interface ExportacaoFeita {
   destino: string;
   avisos: string[];
@@ -535,6 +541,13 @@ campoDoCapituloNovo.addEventListener("keydown", (evento) => {
   }
 });
 
+// O corretor é do sistema: o Rust liga e diz se achou o dicionário. O aviso
+// de dicionário ausente aparece uma vez por abertura do app, não a cada livro.
+const estadoDoCorretor = invoke<EstadoDoCorretor>("estado_do_corretor").catch(
+  (): EstadoDoCorretor => ({ linguas: [], aviso: null }),
+);
+let avisoDoCorretorMostrado = false;
+
 const ROTULO_DE_CRIAR_O_ESTILO = "Criar estilo.yaml";
 
 /** O botão do aviso da pasta sem estilo: o Rust grava o modelo na pasta do
@@ -577,6 +590,11 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
   avisoSemEstilo = null;
   botaoExportar.disabled = false;
   livro.avisos.forEach((aviso) => avisar(aviso));
+  const corretor = await estadoDoCorretor;
+  if (corretor.aviso !== null && !avisoDoCorretorMostrado) {
+    avisoDoCorretorMostrado = true;
+    avisar(corretor.aviso);
+  }
   if (livro.aviso_sem_estilo !== null) {
     avisoSemEstilo = avisar(livro.aviso_sem_estilo, "", {
       rotulo: ROTULO_DE_CRIAR_O_ESTILO,
@@ -627,6 +645,8 @@ async function diagnosticar(): Promise<void> {
   registrar(
     `conforto ao abrir: zoom=${rotuloDoZoom(zoom)} largura=${window.innerWidth} lateral=${getComputedStyle(elemento("lateral")).display} máquina=${maquinaLigada() ? "ligada" : "desligada"}`,
   );
+  const corretor = await estadoDoCorretor;
+  registrar(`corretor: línguas=${corretor.linguas.join(",")} aviso=${corretor.aviso === null ? "não" : "sim"}`);
   registrar(`onde: capítulo=${capituloAtual} posição=${editor.posicao()} hoje="${botaoDeHoje.textContent}"`);
   const roteiro = await invoke<RoteiroDeTeste | null>("roteiro_de_teste");
   if (roteiro) {
@@ -658,6 +678,7 @@ async function diagnosticar(): Promise<void> {
     if (roteiro.escrita) await roteiroDaEscrita();
     if (roteiro.sessao) await roteiroDaSessao();
     if (roteiro.capitulo_novo) await roteiroDoCapituloNovo();
+    if (roteiro.corretor) await roteiroDoCorretor();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -681,6 +702,29 @@ async function diagnosticar(): Promise<void> {
     // De volta ao começo do capítulo, que é o que a captura do teste mostra.
     editor.view.scrollDOM.scrollTop = 0;
   }
+}
+
+/** Digita duas palavras erradas pelo caminho de entrada do navegador, que é
+ *  o que o corretor do sistema acompanha. As pausas dão tempo de o teste
+ *  fotografar a tela antes e depois: o sublinhado não aparece para a página,
+ *  só para quem olha. */
+async function roteiroDoCorretor(): Promise<void> {
+  const espera = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  editor.focar();
+  // A linha do cursor no meio da tela: no fim da janela o sublinhado ficaria
+  // cortado, fora da fotografia.
+  editor.centrar();
+  await espera(300);
+  registrar("corretor: antes de digitar");
+  await espera(2500);
+  for (const letra of " Uma palavrra erradda aqui.") {
+    document.execCommand("insertText", false, letra);
+    await espera(0);
+  }
+  editor.centrar();
+  await espera(1500);
+  registrar("corretor: depois de digitar");
+  await espera(2500);
 }
 
 /** Cria um capítulo pelo botão e pelo campo da lateral, e tenta de novo com
@@ -821,6 +865,7 @@ interface RoteiroDeTeste {
   escrita: boolean;
   sessao: boolean;
   capitulo_novo: boolean;
+  corretor: boolean;
 }
 
 /** As contagens como estão escritas na tela. */
