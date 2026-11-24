@@ -2,48 +2,48 @@
 
 .md-novel-corpo {
   font-family: "EB Garamond";
-  font-size: 12pt;
+  font-size: calc(12pt * var(--md-novel-zoom, 1));
   line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
   text-align: justify;
-  text-indent: 1.25cm;
-  padding-top: 0pt;
-  padding-bottom: 0pt;
+  text-indent: calc(1.25cm * var(--md-novel-zoom, 1));
+  padding-top: calc(0pt * var(--md-novel-zoom, 1));
+  padding-bottom: calc(0pt * var(--md-novel-zoom, 1));
   font-style: normal;
   font-weight: normal;
 }
 
 :is(.md-novel-corpo)[data-md-novel-estilo="Carta"] {
   font-family: "Courier Prime";
-  font-size: 11pt;
+  font-size: calc(11pt * var(--md-novel-zoom, 1));
   line-height: calc(var(--md-novel-linha-simples, 1.2) * 1);
   text-align: left;
-  text-indent: 0cm;
-  padding-top: 0pt;
-  padding-bottom: 6pt;
+  text-indent: calc(0cm * var(--md-novel-zoom, 1));
+  padding-top: calc(0pt * var(--md-novel-zoom, 1));
+  padding-bottom: calc(6pt * var(--md-novel-zoom, 1));
   font-style: normal;
   font-weight: normal;
 }
 
 :is(.md-novel-corpo)[data-md-novel-estilo="Epígrafe"] {
   font-family: "EB Garamond";
-  font-size: 12pt;
+  font-size: calc(12pt * var(--md-novel-zoom, 1));
   line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
   text-align: right;
-  text-indent: 0cm;
-  padding-top: 0pt;
-  padding-bottom: 24pt;
+  text-indent: calc(0cm * var(--md-novel-zoom, 1));
+  padding-top: calc(0pt * var(--md-novel-zoom, 1));
+  padding-bottom: calc(24pt * var(--md-novel-zoom, 1));
   font-style: italic;
   font-weight: normal;
 }
 
 :is(.md-novel-corpo)[data-md-novel-estilo="Placa de rua"] {
   font-family: "EB Garamond";
-  font-size: 12pt;
+  font-size: calc(12pt * var(--md-novel-zoom, 1));
   line-height: calc(var(--md-novel-linha-simples, 1.2) * 1.5);
   text-align: center;
-  text-indent: 0cm;
-  padding-top: 12pt;
-  padding-bottom: 12pt;
+  text-indent: calc(0cm * var(--md-novel-zoom, 1));
+  padding-top: calc(12pt * var(--md-novel-zoom, 1));
+  padding-bottom: calc(12pt * var(--md-novel-zoom, 1));
   font-style: normal;
   font-weight: bold;
 }

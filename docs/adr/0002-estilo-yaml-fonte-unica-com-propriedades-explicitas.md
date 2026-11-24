@@ -42,6 +42,11 @@ Rust. O dado (estilo.yaml, capítulos .md) é do autor e fica na pasta dele.
   `lineRule="auto"`). No CSS sai como
   `calc(var(--md-novel-linha-simples, 1.2) * N)`; o editor mede a fonte e
   define a variável.
+- **As medidas do CSS são multiplicadas por `--md-novel-zoom`** (2026-11-24):
+  tamanho da fonte, recuo e espaços saem como `calc(12pt * var(--md-novel-zoom, 1))`.
+  É o zoom do editor do md Novel, que aproxima só o texto (ADR 0003). Sem a
+  variável vale 1: o resultado é o de antes, na tela e em outro editor. O
+  .docx não tem zoom e não muda.
 - Espaço antes e depois vão em `padding-top`/`padding-bottom` no CSS, não em
   margem: margens de blocos vizinhos se fundem, e o Word soma as duas.
 - A regra de estilo nomeado é

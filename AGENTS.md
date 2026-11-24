@@ -104,8 +104,9 @@ comando. ADRs em `docs/adr/`.
   confirma.
 - Tecla ou rolagem que faz algo na janela entra em função pura com teste
   (`foco.ts`, `conforto.ts`), usa Ctrl (Cmd no Mac) e nunca vale no meio da
-  composição de um acento. O que a janela faz além do livro (zoom, tela
-  cheia) é comando do Rust com a regra em `janela.rs`, não capacidade nova.
+  composição de um acento. A tela cheia é comando do Rust, não capacidade
+  nova. O zoom é só do texto: toda medida do texto, no CSS gerado e no
+  `app.css`, é multiplicada por `--md-novel-zoom`; medida nova entra com ela.
 - O app só troca o que o autor acabou de digitar (aspas, travessão), nunca
   texto colado nem o que já está no capítulo, e nunca onde o Markdown
   precisa do sinal reto (linha `:::`, código, link, tabela). Caso novo entra

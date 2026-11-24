@@ -144,7 +144,9 @@ fn css_nao_usa_margem_vertical_que_se_fundiria_entre_paragrafos() {
     let css = gerar_css(&romance(), &SeletorCss::default());
     assert!(!css.contains("margin"), "{css}");
     assert!(
-        css.contains("  padding-top: 12pt;\n  padding-bottom: 12pt;\n"),
+        css.contains(
+            "  padding-top: calc(12pt * var(--md-novel-zoom, 1));\n  padding-bottom: calc(12pt * var(--md-novel-zoom, 1));\n"
+        ),
         "{css}"
     );
 }
@@ -416,4 +418,41 @@ fn exemplo_do_readme_e_valido_e_usa_todas_as_chaves() {
     );
     let docx = gerar_reference_docx(&modelo(), &estilo).expect("o exemplo gera o reference.docx");
     assert!(!docx.is_empty());
+}
+
+// O zoom do editor é só do texto (ADR 0003, 2026-11-24): toda medida do CSS
+// é multiplicada por `--md-novel-zoom`. Sem a variável vale 1, e o CSS colado
+// em outro editor (Zettlr) dá o mesmo resultado de antes. Até essa data as
+// medidas saíam nuas (`font-size: 12pt`), e o golden e o teste do espaço
+// acima as esperavam assim.
+#[test]
+fn toda_medida_do_css_e_multiplicada_pelo_zoom_do_editor() {
+    let estilo = Estilo::de_yaml(ROMANCE).expect("estilo válido");
+    let css = gerar_css(&estilo, &SeletorCss::default());
+    let medidas: Vec<&str> = css
+        .lines()
+        .filter(|linha| {
+            [
+                "font-size:",
+                "text-indent:",
+                "padding-top:",
+                "padding-bottom:",
+            ]
+            .iter()
+            .any(|propriedade| linha.trim_start().starts_with(propriedade))
+        })
+        .collect();
+    // Quatro medidas por regra, e o romance tem o corpo e três estilos.
+    assert_eq!(medidas.len(), 16, "{css}");
+    for linha in medidas {
+        assert!(
+            linha.trim_end().ends_with(" * var(--md-novel-zoom, 1));") && linha.contains(": calc("),
+            "{linha}"
+        );
+    }
+    // A entrelinha é múltiplo do tamanho da fonte: já acompanha o zoom.
+    assert!(
+        !css.contains("line-height: calc(var(--md-novel-zoom"),
+        "{css}"
+    );
 }

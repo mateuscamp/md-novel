@@ -1,9 +1,9 @@
-// Conforto de quem escreve: zoom da janela, esconder a lateral, máquina de
+// Conforto de quem escreve: zoom do texto, esconder a lateral, máquina de
 // escrever e tela cheia. Aqui ficam as regras, puras; quem liga na janela é
 // o `main.ts`.
 
 export const ZOOM_PADRAO = 100;
-/** A faixa do zoom, em por cento. A mesma de `app/src-tauri/src/janela.rs`. */
+/** A faixa do zoom, em por cento. */
 export const ZOOM_MINIMO = 50;
 export const ZOOM_MAXIMO = 300;
 const PASSO_DO_ZOOM = 10;
@@ -30,6 +30,12 @@ export function zoomDepoisDe(atual: number, acao: AcaoDeZoom): number {
 
 export function rotuloDoZoom(zoom: number): string {
   return `${zoom}%`;
+}
+
+/** O valor de `--md-novel-zoom`, por onde o CSS do livro e a folha multiplicam
+ *  as medidas do texto. */
+export function fatorDoZoom(zoom: number): string {
+  return String(zoom / 100);
 }
 
 /** Ctrl+rolagem: para cima aproxima, para baixo afasta. Sem Ctrl a rolagem

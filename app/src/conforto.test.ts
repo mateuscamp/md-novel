@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   acaoDaRoda,
   atalhoDaTecla,
+  fatorDoZoom,
   lerDesligado,
   lerLigado,
   lerZoom,
@@ -22,11 +22,11 @@ test("o zoom guardado vale se for um número da faixa; senão é 100%", () => {
   }
 });
 
-test("a faixa do zoom é a mesma na interface e no Rust, que é quem confere", () => {
-  const rust = readFileSync(new URL("../src-tauri/src/janela.rs", import.meta.url), "utf8");
-  const constante = (nome: string) => Number(new RegExp(`pub const ${nome}: u32 = (\\d+);`).exec(rust)?.[1]);
-  assert.equal(constante("ZOOM_MINIMO"), ZOOM_MINIMO);
-  assert.equal(constante("ZOOM_MAXIMO"), ZOOM_MAXIMO);
+test("o fator do zoom é o por cento dividido por cem, escrito como o CSS lê", () => {
+  assert.equal(fatorDoZoom(100), "1");
+  assert.equal(fatorDoZoom(110), "1.1");
+  assert.equal(fatorDoZoom(50), "0.5");
+  assert.equal(fatorDoZoom(300), "3");
 });
 
 test("o zoom anda de 10 em 10 e para nas pontas da faixa", () => {

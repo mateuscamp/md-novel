@@ -5,7 +5,6 @@
 #[cfg(target_os = "linux")]
 mod corretor;
 mod exportacao;
-mod janela;
 mod memoria;
 mod sessao;
 
@@ -14,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 use workspace::Gravacao;
 
@@ -70,17 +69,6 @@ fn criar_capitulo(
     estado: State<'_, Estado>,
 ) -> Result<CapituloCriado, ErroDeComando> {
     estado.sessao().criar_capitulo(&nome)
-}
-
-/// Zoom da janela inteira, como o de um navegador. A página manda só o por
-/// cento; a faixa é conferida em `janela::fator_de_zoom`.
-#[tauri::command]
-fn definir_zoom(janela: WebviewWindow, por_cento: u32) -> Result<(), ErroDeComando> {
-    let fator = janela::fator_de_zoom(por_cento)?;
-    janela.set_zoom(fator).map_err(|erro| ErroDeComando {
-        codigo: "erro",
-        mensagem: format!("não consegui mudar o zoom da janela: {erro}"),
-    })
 }
 
 /// Entra na tela cheia ou sai dela. Devolve se a janela ficou em tela cheia.
@@ -390,7 +378,6 @@ fn main() {
             criar_estilo,
             criar_capitulo,
             estado_do_corretor,
-            definir_zoom,
             alternar_tela_cheia,
             abrir_capitulo,
             salvar_capitulo,
