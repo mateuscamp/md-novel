@@ -153,8 +153,8 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #status { overflow: hidden; }
 #estado { margin-left: auto; }
 #estado.erro { color: var(--erro-tinta); font-weight: 600; }
-#zoom, #aspas, #hoje { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
-#zoom:hover, #aspas:hover, #hoje:hover { background: var(--realce); }
+#zoom, #aspas, #hoje, #converter { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
+#zoom:hover, #aspas:hover, #hoje:hover, #converter:not(:disabled):hover { background: var(--realce); }
 #hoje[hidden], #campo-da-meta[hidden] { display: none; }
 #campo-da-meta {
   font: inherit; color: var(--tinta); background: var(--papel);
@@ -203,6 +203,13 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   padding-top: 0; padding-bottom: 0;
 }
 .cm-content .cm-line.md-novel-vazia { text-indent: 0; }
+/* Parágrafos como no Word (ADR 0003): a linha em branco que o Markdown pede
+   entre dois parágrafos não ocupa espaço na tela. O espaço entre eles é o
+   do estilo do livro (espaço antes e depois). `!important` porque a regra
+   de um estilo nomeado tem o mesmo peso e vem depois. */
+.cm-content .cm-line.md-novel-separador {
+  height: 0 !important; padding: 0 !important; font-size: 0 !important; line-height: 0 !important; overflow: hidden;
+}
 
 /* O Markdown à vista (ADR 0003): o texto fica como vai sair, e os sinais que
    o autor digitou continuam na tela, apagados. Nada é escondido. */

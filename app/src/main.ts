@@ -99,6 +99,7 @@ const botaoDaLateral = elemento<HTMLButtonElement>("alternar-lateral");
 const botaoDaMaquina = elemento<HTMLButtonElement>("maquina");
 const botaoDoZoom = elemento<HTMLButtonElement>("zoom");
 const botaoDasAspas = elemento<HTMLButtonElement>("aspas");
+const botaoDeConverter = elemento<HTMLButtonElement>("converter");
 const botaoDeHoje = elemento<HTMLButtonElement>("hoje");
 const botaoNovoCapitulo = elemento<HTMLButtonElement>("novo-capitulo");
 const campoDoCapituloNovo = elemento<HTMLInputElement>("nome-do-capitulo-novo");
@@ -375,6 +376,7 @@ async function abrirCapitulo(nome: string, descartarMudancas = false): Promise<v
     folha.hidden = false;
     editor.focar();
     registrar(`capítulo: ${nome}, ${editor.view.state.doc.lines} linhas`);
+    botaoDeConverter.disabled = false;
     guardarOnde();
   } catch (motivo) {
     avisar(comoErro(motivo).mensagem, "erro");
@@ -912,6 +914,7 @@ async function diagnosticar(): Promise<void> {
     if (roteiro.capitulo_novo) await roteiroDoCapituloNovo();
     if (roteiro.corretor) await roteiroDoCorretor();
     if (roteiro.painel_de_estilo) await roteiroDoPainelDeEstilo();
+    if (roteiro.paragrafos) await roteiroDosParagrafos();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -928,6 +931,15 @@ async function diagnosticar(): Promise<void> {
       const achado = editor.view.contentDOM.querySelector(seletor);
       return achado ? getComputedStyle(achado).fontSize : "ausente";
     };
+    // O realce chega um instante depois do texto: o analisador do Markdown
+    // trabalha em fatias, e o fim do capítulo é o último a ficar pronto.
+    for (
+      let vez = 0;
+      vez < 40 && editor.view.contentDOM.querySelector(".cm-line:not(.md-novel-titulo) .md-novel-t1") === null;
+      vez += 1
+    ) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
     registrar(`título colado: texto=${tamanho(".cm-line:not(.md-novel-titulo) .md-novel-t1")} corpo=${tamanho(".cm-line:not(.md-novel-titulo):not(.md-novel-marcador)")}`);
     if (roteiro.foco) definirFoco(true);
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -935,6 +947,58 @@ async function diagnosticar(): Promise<void> {
     // De volta ao começo do capítulo, que é o que a captura do teste mostra.
     editor.view.scrollDOM.scrollTop = 0;
   }
+}
+
+/** Parágrafos como no Word e a conversão dos sinais: mede a linha em branco
+ *  escondida, aperta Enter e Backspace como o autor e converte um trecho. */
+async function roteiroDosParagrafos(): Promise<void> {
+  const quadro = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const tecla = (key: string, ctrlKey = false) =>
+    editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey, bubbles: true, cancelable: true }));
+  const fim = (letras: number) => JSON.stringify(editor.texto().slice(-letras));
+  // A linha em branco entre dois parágrafos que estão na tela.
+  editor.view.scrollDOM.scrollTop = 0;
+  await quadro();
+  await quadro();
+  const linhas = [...editor.view.contentDOM.querySelectorAll<HTMLElement>(".cm-line")];
+  const separadora = linhas.findIndex(
+    (linha, indice) =>
+      linha.classList.contains("md-novel-separador") &&
+      indice > 0 &&
+      indice + 1 < linhas.length &&
+      !linhas[indice - 1]?.classList.contains("md-novel-titulo") &&
+      !linhas[indice + 1]?.classList.contains("md-novel-marcador"),
+  );
+  const [cima, meio, baixo] = [linhas[separadora - 1], linhas[separadora], linhas[separadora + 1]].map((linha) =>
+    linha?.getBoundingClientRect(),
+  );
+  registrar(
+    `parágrafos: separadoras=${linhas.filter((linha) => linha.classList.contains("md-novel-separador")).length} altura=${meio?.height} vão=${cima && baixo ? Math.round(baixo.top - cima.bottom) : "ausente"}px`,
+  );
+  // Enter no fim do capítulo: parágrafo novo, com a linha em branco no arquivo.
+  editor.irPara(editor.texto().length);
+  editor.focar();
+  tecla("Enter");
+  for (const letra of "Novo.") {
+    document.execCommand("insertText", false, letra);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+  await quadro();
+  registrar(`parágrafos: enter fim=${fim(8)}`);
+  // Backspace no começo do parágrafo novo: junta com o de cima.
+  editor.irPara(editor.texto().length - "Novo.".length);
+  tecla("Backspace");
+  await quadro();
+  registrar(`parágrafos: backspace fim=${fim(8)}`);
+  // Um trecho como outros programas gravam, e o botão de converter.
+  editor.digitarNoFim('\n\n\\-- "Oi", disse.');
+  const antes = fim(16);
+  botaoDeConverter.click();
+  await quadro();
+  const convertido = fim(14);
+  tecla("z", true);
+  await quadro();
+  registrar(`converter: antes=${antes} depois=${convertido} desfeito=${fim(16)}`);
 }
 
 /** Muda o estilo pelo painel, como o autor faria com o mouse e o teclado, e
@@ -1010,7 +1074,9 @@ async function roteiroDoCorretor(): Promise<void> {
   const espera = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
   editor.focar();
   // A linha do cursor no meio da tela: no fim da janela o sublinhado ficaria
-  // cortado, fora da fotografia.
+  // cortado, fora da fotografia. A última linha do capítulo só chega ao meio
+  // com a folga da máquina de escrever, ligada aqui sem guardar a escolha.
+  definirMaquina(true);
   editor.centrar();
   await espera(300);
   registrar("corretor: antes de digitar");
@@ -1175,6 +1241,7 @@ interface RoteiroDeTeste {
   capitulo_novo: boolean;
   corretor: boolean;
   painel_de_estilo: boolean;
+  paragrafos: boolean;
 }
 
 /** As contagens como estão escritas na tela. */
@@ -1332,6 +1399,19 @@ aplicarZoom();
 botaoDaLateral.addEventListener("click", () => fazerAtalho("lateral"));
 botaoDaMaquina.addEventListener("click", () => fazerAtalho("maquina"));
 botaoDoZoom.addEventListener("click", () => fazerAtalho("zoom-restaurar"));
+// O que já estava escrito não é trocado ao digitar: o autor pede, para o
+// capítulo aberto, e desfaz com Ctrl+Z se não gostar.
+botaoDeConverter.addEventListener("click", () => {
+  const trocas = editor.converterSinais();
+  avisar(
+    trocas === 0
+      ? "Este capítulo não tem hifens duplos nem aspas retas para converter."
+      : `Troquei ${numero(trocas)} ${trocas === 1 ? "sinal" : "sinais"} deste capítulo por travessão e aspas curvas. Ctrl+Z desfaz.`,
+    "feito",
+  );
+  registrar(`convertido: ${trocas}`);
+  editor.focar();
+});
 botaoDasAspas.addEventListener("click", () => {
   definirTipografia(!tipografiaLigada());
   guardar(CHAVE_DAS_ASPAS, tipografiaLigada() ? LIGADO : DESLIGADO);

@@ -132,3 +132,36 @@ test("dentro de um bloco de código cercado nada é marcador, título nem estilo
     [...Array(15).fill(false), true],
   );
 });
+
+// Parágrafos como no Word (ADR 0003): a linha em branco que o Markdown pede
+// entre um parágrafo e outro some da tela. É a linha vazia logo depois de
+// uma linha com texto, quando ainda há linha depois dela.
+test("a linha em branco entre dois parágrafos é separadora; as outras linhas em branco não", () => {
+  const separadoras = (texto: string) => marcarLinhas(texto.split("\n")).map((marca) => marca.separador);
+  assert.deepEqual(separadoras("A\n\nB"), [false, true, false]);
+  // Da segunda linha em branco seguida em diante, o espaço é do autor e aparece.
+  assert.deepEqual(separadoras("A\n\n\nB"), [false, true, false, false]);
+  // A última linha do capítulo é onde o cursor fica ao começar um parágrafo.
+  assert.deepEqual(separadoras("A\n"), [false, false]);
+  assert.deepEqual(separadoras("A\n\n"), [false, true, false]);
+  // No começo do capítulo não há parágrafo antes.
+  assert.deepEqual(separadoras("\nA"), [false, false]);
+  // Depois de título e de marcador de bloco também é separadora.
+  assert.deepEqual(separadoras("# T\n\ntexto\n\n::: {.a}\nx\n:::\n\nfim"), [
+    false, true, false, true, false, false, false, true, false,
+  ]);
+  // Linha só com espaços não é vazia: fica à vista.
+  assert.deepEqual(separadoras("A\n  \nB"), [false, false, false]);
+});
+
+test("dentro de um bloco de código nenhuma linha é separadora, e a linha é marcada como código", () => {
+  const marcas = marcarLinhas("antes\n\n```\na\n\nb\n```\n\ndepois".split("\n"));
+  assert.deepEqual(
+    marcas.map((marca) => marca.separador),
+    [false, true, false, false, false, false, false, true, false],
+  );
+  assert.deepEqual(
+    marcas.map((marca) => marca.codigo),
+    [false, false, true, true, true, true, true, false, false],
+  );
+});

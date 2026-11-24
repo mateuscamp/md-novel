@@ -121,6 +121,13 @@ O que ele faz hoje:
 - A barra de baixo mostra as palavras escritas hoje no livro. Clique nelas
   para definir a meta do dia; campo vazio tira a meta.
 - Buscar e substituir com Ctrl+F (ou Ctrl+H), dentro do capítulo aberto.
+- Parágrafos como no Word: Enter cria um parágrafo novo, e a linha em branco
+  que o Markdown pede entre eles fica no arquivo, mas não aparece na tela.
+  Backspace no começo de um parágrafo junta com o de cima; Shift+Enter é a
+  quebra de linha simples.
+- "Converter sinais", na barra de baixo, troca de uma vez, no capítulo
+  aberto, os hifens duplos (`--` e `\--`) por travessão e as aspas retas por
+  curvas. Ctrl+Z desfaz.
 - Aspas curvas e travessão ao digitar: `"` vira “ ”, `'` vira ‘ ’ e `--` vira
   —. O botão "Aspas" da barra de baixo desliga. Nas linhas `:::`, em código
   e em links o sinal fica reto.
@@ -130,8 +137,7 @@ O que ele faz hoje:
   janela. Sem `estilo.yaml` o .docx sai com o estilo padrão do Pandoc, com
   aviso; com o `estilo.yaml` inválido nada é exportado.
 
-O que ainda não faz: ordenar capítulos fora da ordem de nome, esconder a
-linha em branco entre parágrafos, dar aos títulos a cara do .docx e perceber
+O que ainda não faz: ordenar capítulos fora da ordem de nome, dar aos títulos a cara do .docx e perceber
 sozinho, com o programa aberto, que um arquivo mudou. Não há pacote pronto
 para baixar: instalar é compilar.
 

@@ -4,13 +4,14 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { defineLanguageFacet, Language, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { findNext, openSearchPanel, SearchQuery, search, searchKeymap, setSearchQuery } from "@codemirror/search";
-import { EditorState, type Extension, RangeSetBuilder, StateField } from "@codemirror/state";
+import { EditorState, type Extension, type RangeSet, RangeSetBuilder, RangeValue, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 import { tagHighlighter, tags } from "@lezer/highlight";
 import { parser, Strikethrough } from "@lezer/markdown";
 import { marcarLinhas } from "./blocos.ts";
 import { FRASES_DA_BUSCA } from "./busca.ts";
-import { substituicao } from "./tipografia.ts";
+import { enterCriaParagrafo } from "./paragrafo.ts";
+import { converter, substituicao } from "./tipografia.ts";
 
 export interface Editor {
   /** Troca o texto inteiro (outro capítulo): o desfazer começa do zero. */
@@ -25,6 +26,9 @@ export interface Editor {
   posicao(): number;
   /** Leva o cursor para `posicao` (ou para o fim, se o texto é mais curto) e mostra a linha. */
   irPara(posicao: number): void;
+  /** Troca no texto inteiro os hifens duplos por travessão e as aspas retas
+   *  por curvas, e diz quantas trocas fez. */
+  converterSinais(): number;
   /** Põe `texto` na busca e seleciona a próxima ocorrência. Usado pelo teste funcional. */
   buscarProximo(texto: string): void;
   /** Digita no fim do texto, como o autor faria. Usado pelo teste funcional. */
@@ -32,17 +36,36 @@ export interface Editor {
   readonly view: EditorView;
 }
 
+/** O trecho que o cursor atravessa de uma vez: a linha em branco escondida
+ *  entre dois parágrafos, com as duas quebras de linha em volta dela. */
+class Separador extends RangeValue {}
+const SEPARADOR = new Separador();
+
+interface Marcas {
+  decoracoes: DecorationSet;
+  separadores: RangeSet<Separador>;
+}
+
 /** Uma decoração por linha que precisa de marca: estilo nomeado, título,
- *  marcador `:::` ou linha vazia. Refeita a cada mudança do texto. */
-function decorar(estado: EditorState): DecorationSet {
+ *  marcador `:::`, linha vazia ou separadora de parágrafos. Refeita a cada
+ *  mudança do texto. */
+function decorar(estado: EditorState): Marcas {
   const marcas = marcarLinhas(estado.doc.toString().split("\n"));
   const decoracoes = new RangeSetBuilder<Decoration>();
+  const separadores = new RangeSetBuilder<Separador>();
   marcas.forEach((marca, indice) => {
     const linha = estado.doc.line(indice + 1);
     const classes: string[] = [];
     if (marca.titulo) classes.push("md-novel-titulo");
     if (marca.marcador) classes.push("md-novel-marcador");
     if (linha.length === 0) classes.push("md-novel-vazia");
+    if (marca.separador) {
+      // Parágrafos como no Word (ADR 0003): a linha some da tela, e do fim
+      // do parágrafo de cima ao começo do de baixo é um passo só do cursor.
+      // Backspace no começo do parágrafo apaga o trecho inteiro e junta os dois.
+      classes.push("md-novel-separador");
+      separadores.add(linha.from - 1, linha.to + 1, SEPARADOR);
+    }
     if (classes.length === 0 && marca.estilo === null) return;
     decoracoes.add(
       linha.from,
@@ -54,13 +77,16 @@ function decorar(estado: EditorState): DecorationSet {
       }),
     );
   });
-  return decoracoes.finish();
+  return { decoracoes: decoracoes.finish(), separadores: separadores.finish() };
 }
 
-const marcasDasLinhas = StateField.define<DecorationSet>({
+const marcasDasLinhas = StateField.define<Marcas>({
   create: decorar,
   update: (atual, transacao) => (transacao.docChanged ? decorar(transacao.state) : atual),
-  provide: (campo) => EditorView.decorations.from(campo),
+  provide: (campo) => [
+    EditorView.decorations.from(campo, (marcas) => marcas.decoracoes),
+    EditorView.atomicRanges.of((view) => view.state.field(campo).separadores),
+  ],
 });
 
 // O Markdown à vista: o analisador do Lezer acha a ênfase, os títulos e os
@@ -139,6 +165,26 @@ export function criarEditor(
     history(),
     keymap.of([
       { key: "Mod-s", preventDefault: true, run: () => (aoSalvar(), true) },
+      // Enter cria um parágrafo: o app grava a linha em branco que o
+      // Markdown pede (ADR 0003). Com Shift, ou onde a linha em branco
+      // estragaria o Markdown, vale o Enter de sempre, mais abaixo.
+      {
+        key: "Enter",
+        run: (view) => {
+          const { ranges, main } = view.state.selection;
+          if (ranges.length !== 1 || dentroDeCodigo(view.state, main.from)) return false;
+          const linha = view.state.doc.lineAt(main.from);
+          const deCimaVazia = linha.number > 1 && view.state.doc.line(linha.number - 1).length === 0;
+          if (!enterCriaParagrafo(linha.text, { noComeco: main.from === linha.from, deCimaVazia })) return false;
+          view.dispatch({
+            changes: { from: main.from, to: main.to, insert: "\n\n" },
+            selection: { anchor: main.from + 2 },
+            userEvent: "input",
+            scrollIntoView: true,
+          });
+          return true;
+        },
+      },
       // Buscar e substituir são o mesmo painel: Ctrl+H abre o de Ctrl+F.
       { key: "Mod-h", preventDefault: true, run: openSearchPanel },
       ...searchKeymap,
@@ -200,6 +246,16 @@ export function criarEditor(
         selection: { anchor: destino },
         effects: EditorView.scrollIntoView(destino, { y: "center" }),
       });
+    },
+    converterSinais: () => {
+      const { mudancas } = converter(view.state.doc.toString());
+      if (mudancas.length === 0) return 0;
+      // Uma transação só: um Ctrl+Z desfaz a conversão inteira.
+      view.dispatch({
+        changes: mudancas.map(({ de, ate, inserir }) => ({ from: de, to: ate, insert: inserir })),
+        userEvent: "input.converter",
+      });
+      return mudancas.length;
     },
     buscarProximo: (texto) => {
       view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: texto })) });

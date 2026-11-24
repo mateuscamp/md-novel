@@ -418,6 +418,34 @@ substitui o "fica de fora" da seção "Criar o estilo.yaml pelo app".
   (continua sendo o bloco `:::`), e avisar que um estilo apagado ainda é
   usado num capítulo.
 
+## Parágrafos como no Word, e converter o que já estava escrito (2026-11-24)
+
+O autor abriu um capítulo escrito em outro programa e apontou duas coisas:
+as falas começavam com `\--` em vez de travessão, e havia "muito espaço
+entre os parágrafos", que era a linha em branco do Markdown.
+
+- **A linha em branco entre dois parágrafos some da tela.** Ela continua no
+  arquivo, que segue sendo Markdown válido; o espaço entre parágrafos passa
+  a ser só o do estilo do livro. É a única coisa que o editor esconde: os
+  sinais digitados (`*`, `#`, `:::`) continuam à vista. Da segunda linha em
+  branco seguida em diante, o espaço é do autor e aparece.
+- **O cursor atravessa a linha escondida de uma vez**, do fim de um
+  parágrafo ao começo do outro. Backspace no começo de um parágrafo, ou
+  Delete no fim, apaga a linha em branco inteira e junta os dois.
+- **Enter cria um parágrafo:** o app grava as duas quebras de linha. Shift+Enter
+  é a quebra simples. Onde a linha em branco estragaria o Markdown (lista,
+  citação, tabela, linha `:::`, código), o Enter é o de sempre.
+- **"Converter sinais" troca o que já estava escrito**, no capítulo aberto e
+  a pedido: `\--`, `--` e `---` viram travessão, e as aspas retas viram
+  curvas, pela mesma regra de quem digita. Uma transação só, que o Ctrl+Z
+  desfaz. Converter sozinho ao abrir foi recusado pelo autor: o app não
+  muda o manuscrito sem pedido.
+- **Por que no arquivo, e não só na tela:** para o Pandoc, `\--` são dois
+  hifens e `--` é a meia-risca; o travessão só sai no .docx se estiver no
+  arquivo.
+- **Custo aceito:** quem quer ver cada linha do arquivo não vê mais a linha
+  em branco, e não há botão para voltar a mostrá-la.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -440,6 +468,9 @@ substitui o "fica de fora" da seção "Criar o estilo.yaml pelo app".
 | O painel não grava por cima do que mudou | `gravar_estilo_*` em `crates/workspace/tests/livro.rs` e os testes `o_painel_*` de `sessao.rs` | `make check` | o `estilo.yaml` que mudou, apareceu ou sumiu por fora é trocado, ou um valor inválido chega ao disco |
 | Regras do formulário | `app/src/painel.test.ts` | `make check` | o estilo nomeado não herda do texto do livro, uma propriedade do estilo fica sem campo no painel, ou uma medida não vai e volta |
 | O painel na janela de verdade | `app/teste_funcional.py`, passada 13 | à mão, fora do CI | a mudança no painel não aparece no texto na hora, não chega ao `estilo.yaml`, o estilo nomeado não herda, criar ou apagar estilo falha, ou o valor inválido é gravado |
+| Linha separadora e Enter de parágrafo | `app/src/blocos.test.ts` e `app/src/paragrafo.test.ts` | `make check` | uma linha em branco de bloco de código, do fim do capítulo ou repetida é escondida, ou o Enter abre linha em branco em lista, citação, tabela ou linha `:::` |
+| Converter sinais | `app/src/tipografia.test.ts` (`converter`) | `make check` | um sinal é trocado em código, linha `:::`, tabela, quebra de cena, cabeçalho YAML, comentário ou link, ou as trocas não refazem o texto |
+| Parágrafos na janela de verdade | `app/teste_funcional.py`, passada 14 | à mão, fora do CI | a linha em branco entre parágrafos ocupa espaço, Enter não grava a linha em branco, Backspace não junta os parágrafos, ou converter e desfazer não dão o texto esperado |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |

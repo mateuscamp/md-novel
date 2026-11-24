@@ -18,13 +18,13 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São treze passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São catorze passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
   guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
   máquina de escrever), a escrita (aspas, travessão, busca), a sessão
   (reabrir onde parou, meta do dia), o capítulo novo, o corretor
-  ortográfico, que precisa do `hunspell-pt-br` instalado, e o painel de
-  estilo. `--passada=N` roda uma só. Ele abre o app num
+  ortográfico, que precisa do `hunspell-pt-br` instalado, o painel de
+  estilo e os parágrafos como no Word. `--passada=N` roda uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -112,11 +112,15 @@ comando. ADRs em `docs/adr/`.
   `app.css`, é multiplicada por `--md-novel-zoom`; medida nova entra com ela.
 - O app só troca o que o autor acabou de digitar (aspas, travessão), nunca
   texto colado nem o que já está no capítulo, e nunca onde o Markdown
-  precisa do sinal reto (linha `:::`, código, link, tabela). Caso novo entra
+  precisa do sinal reto (linha `:::`, código, link, tabela). O que já
+  estava escrito só muda pelo comando "Converter sinais", que o autor pede
+  para o capítulo aberto e desfaz com Ctrl+Z; nunca sozinho ao abrir. Caso novo entra
   primeiro em `tipografia.test.ts`.
 - Texto do CodeMirror que aparece para o autor é traduzido em `busca.ts`.
 - O editor mostra o Markdown, não esconde: sinal digitado (`*`, `#`, `:::`)
-  continua na tela. O modo foco nunca esconde os avisos.
+  continua na tela. A única exceção é a linha em branco entre dois
+  parágrafos (`separador` em `blocos.ts`), que some da tela e continua no
+  arquivo; Enter grava essa linha por conta própria (`paragrafo.ts`). O modo foco nunca esconde os avisos.
 - Caminho de imagem num capítulo vale a partir da pasta daquele capítulo
   (`+rebase_relative_paths`), não da pasta de onde o comando roda.
 - O único arquivo que o md Novel apaga sozinho é temporário dele mesmo:
