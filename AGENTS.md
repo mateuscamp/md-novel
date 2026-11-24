@@ -18,9 +18,9 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São seis passadas: salvar sozinho (com a lateral, a contagem e o realce),
-  fechar a janela, exportar, tema escuro, modo foco e a escolha de tema
-  guardada. Ele abre o app num
+  São sete passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
+  guardada e criar o estilo.yaml pelo botão. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -69,7 +69,10 @@ comando. ADRs em `docs/adr/`.
   em enum do projeto: é o que faz propriedade nova quebrar a compilação.
 - O manuscrito é o ativo. Toda gravação passa por `workspace::SaidaPendente`
   (temporário na pasta de destino + rename). Arquivo gerado só termina em
-  `.docx` ou `.css`. Capítulo (`.md`) só é gravado por
+  `.docx` ou `.css`. O `estilo.yaml` só é gravado por
+  `workspace::Livro::criar_estilo`: a pedido do autor (o botão do aviso), a
+  partir do `exemplos/estilo.yaml` embutido, e nunca por cima de um que já
+  existe, nem de um link. Capítulo (`.md`) só é gravado por
   `workspace::Capitulo::salvar`, que recusa se o arquivo mudou no disco desde
   a leitura e não escreve se o texto é o mesmo. Comando com mais de uma
   saída prepara todas antes de publicar a primeira. A exceção é o
@@ -80,7 +83,7 @@ comando. ADRs em `docs/adr/`.
   que não daria para devolver igual (finais de linha misturados, fora do
   UTF-8) é recusado na leitura, nunca "consertado".
 - O app não cria arquivo na pasta do livro além do que o autor pediu para
-  salvar. Cache e configuração do app, quando existirem, vão fora dela.
+  salvar ou criar (hoje: os capítulos e o `estilo.yaml` do botão). Cache e configuração do app, quando existirem, vão fora dela.
 - Limite ou guarda nova (tamanho, faixa, extensão) vem com o teste que
   reprova quando ela é removida.
 - Contagem de palavras e título do capítulo existem duas vezes, em
@@ -96,7 +99,7 @@ comando. ADRs em `docs/adr/`.
 - Caminho de imagem num capítulo vale a partir da pasta daquele capítulo
   (`+rebase_relative_paths`), não da pasta de onde o comando roda.
 - O único arquivo que o md Novel apaga sozinho é temporário dele mesmo:
-  `.md-novel-gravando-*` terminado em `.css`, `.docx` ou `.md`, arquivo comum,
+  `.md-novel-gravando-*` terminado em `.css`, `.docx`, `.md` ou `.yaml`, arquivo comum,
   parado há mais de uma hora. Não alargue esse padrão.
 - Segurança da janela: o CSP só afrouxa `style-src` (o CodeMirror injeta CSS);
   script continua só do próprio app. Capacidade nova no

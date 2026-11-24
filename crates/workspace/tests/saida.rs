@@ -101,6 +101,33 @@ fn link_quebrado_e_recusado_com_o_caminho_na_mensagem() {
     assert!(erro.to_string().contains("editor.css"), "{erro}");
 }
 
+// A conferência e a troca são uma operação só: um arquivo que apareceu
+// depois de a saída ser preparada (a sincronização, outro programa) fica.
+#[test]
+fn publicar_sem_sobrescrever_recusa_o_destino_que_apareceu_e_nao_deixa_temporario() {
+    let pasta = tempfile::tempdir().expect("pasta temporária");
+    let destino = pasta.path().join("estilo.yaml");
+
+    let mut nova = SaidaPendente::preparar(&destino, "yaml").expect("preparar");
+    nova.escrever(b"modelo").expect("escrever");
+    nova.publicar_sem_sobrescrever()
+        .expect("publicar o que não existia");
+    assert_eq!(fs::read(&destino).expect("ler"), b"modelo");
+
+    let mut segunda = SaidaPendente::preparar(&destino, "yaml").expect("preparar de novo");
+    segunda.escrever(b"outro modelo").expect("escrever");
+    // Entre preparar e publicar, o arquivo já está lá.
+    let erro = segunda
+        .publicar_sem_sobrescrever()
+        .expect_err("o destino existe");
+    assert!(
+        matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido == &destino),
+        "{erro:?}"
+    );
+    assert_eq!(fs::read(&destino).expect("ler"), b"modelo");
+    assert_eq!(nomes(pasta.path()), ["estilo.yaml"]);
+}
+
 #[test]
 fn temporario_orfao_de_uma_execucao_interrompida_e_recolhido() {
     let pasta = tempfile::tempdir().expect("pasta temporária");
@@ -117,10 +144,14 @@ fn temporario_orfao_de_uma_execucao_interrompida_e_recolhido() {
     // conferida com `.txt`, e o órfão `.md` entra no que deve sumir.
     let outra_extensao = pasta.path().join(".md-novel-gravando-notas.txt");
     let orfao_de_capitulo = pasta.path().join(".md-novel-gravando-Qw3rTy.md");
+    // `.yaml` entrou em 2026-11-24, com o botão que cria o estilo.yaml: é
+    // mais um temporário que só este módulo cria.
+    let orfao_de_estilo = pasta.path().join(".md-novel-gravando-Zx9Kp2.yaml");
     let pasta_parecida = pasta.path().join(".md-novel-gravando-pasta.docx");
     for arquivo in [
         &orfao,
         &orfao_de_capitulo,
+        &orfao_de_estilo,
         &recente,
         &do_autor,
         &parecido,
@@ -133,6 +164,7 @@ fn temporario_orfao_de_uma_execucao_interrompida_e_recolhido() {
     for antigo in [
         &orfao,
         &orfao_de_capitulo,
+        &orfao_de_estilo,
         &do_autor,
         &parecido,
         &prefixo_quase,

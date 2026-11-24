@@ -81,7 +81,10 @@ O que ele faz hoje:
   criado nem mudado na pasta ao abrir.
 - O texto aparece com a tipografia do `estilo.yaml` da pasta, inclusive os
   estilos nomeados dos blocos `:::`. Sem `estilo.yaml`, ou com ele inválido,
-  o programa avisa e abre os capítulos assim mesmo.
+  o programa avisa e abre os capítulos assim mesmo. Na pasta sem estilo o
+  aviso traz o botão "Criar estilo.yaml", que grava ali o modelo comentado
+  (o mesmo de `exemplos/estilo.yaml`); um estilo que já existe nunca é
+  trocado. Para ajustar, edite o arquivo e abra o programa de novo.
 - Salva sozinho um instante depois de você parar de digitar, ao trocar de
   capítulo e ao sair da janela (e com Ctrl+S). O arquivo volta ao disco no
   formato em que estava.
