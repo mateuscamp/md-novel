@@ -39,6 +39,13 @@ fn livro_atual(estado: State<'_, Estado>) -> Result<Option<LivroAberto>, ErroDeC
     estado.sessao().livro_atual()
 }
 
+/// Cria o `estilo.yaml` do livro aberto, a pedido do autor (o botão do aviso
+/// da pasta sem estilo). A página não manda nada: nem caminho, nem conteúdo.
+#[tauri::command(async)]
+fn criar_estilo(estado: State<'_, Estado>) -> Result<LivroAberto, ErroDeComando> {
+    estado.sessao().criar_estilo()
+}
+
 /// Mostra o seletor de pasta do sistema e abre a pasta escolhida. A página
 /// não manda caminho nenhum: quem escolhe é o autor, na janela do sistema.
 /// `async` aqui tira o comando da thread principal, que o diálogo bloquearia.
@@ -136,6 +143,8 @@ struct RoteiroDeTeste {
     cliques_no_tema: u32,
     /// Entrar no modo foco depois de digitar.
     foco: bool,
+    /// Criar o estilo.yaml pelo botão do aviso, depois de digitar.
+    criar_estilo: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -154,6 +163,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
             .and_then(|cliques| cliques.parse().ok())
             .unwrap_or(0),
         foco: std::env::var_os("MD_NOVEL_TESTE_FOCO").is_some(),
+        criar_estilo: std::env::var_os("MD_NOVEL_TESTE_CRIAR_ESTILO").is_some(),
     })
 }
 
@@ -216,6 +226,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             livro_atual,
             escolher_pasta,
+            criar_estilo,
             abrir_capitulo,
             salvar_capitulo,
             exportar_livro,

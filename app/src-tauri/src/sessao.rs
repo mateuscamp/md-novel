@@ -33,6 +33,10 @@ pub struct LivroAberto {
     /// Fontes que o estilo pede, para a interface avisar se alguma falta.
     pub fontes: Vec<String>,
     pub avisos: Vec<String>,
+    /// O aviso da pasta sem `estilo.yaml`, à parte dos outros: a interface
+    /// põe nele o botão que cria o estilo. `None` quando o livro tem um
+    /// estilo, mesmo inválido.
+    pub aviso_sem_estilo: Option<String>,
 }
 
 /// Erro de um comando, no formato que a interface entende.
@@ -42,6 +46,11 @@ pub struct ErroDeComando {
     pub codigo: &'static str,
     pub mensagem: String,
 }
+
+/// O estilo que o botão "Criar estilo.yaml" grava: o exemplo comentado do
+/// projeto, embutido no programa. É um arquivo só, para o exemplo que o
+/// README manda copiar e o que o app cria nunca divergirem.
+const MODELO_DE_ESTILO: &str = include_str!("../../../exemplos/estilo.yaml");
 
 #[derive(Debug, Default)]
 pub struct Sessao {
@@ -65,6 +74,16 @@ impl Sessao {
     /// O livro aberto, relido da pasta, ou `None` se não há nenhum.
     pub fn livro_atual(&self) -> Result<Option<LivroAberto>, ErroDeComando> {
         self.livro.as_ref().map(montar).transpose()
+    }
+
+    /// Cria o `estilo.yaml` do livro aberto a partir do modelo e devolve o
+    /// livro relido, já com o CSS. Se o arquivo já existe, é erro e nada muda.
+    pub fn criar_estilo(&self) -> Result<LivroAberto, ErroDeComando> {
+        let Some(livro) = &self.livro else {
+            return Err(erro("abra a pasta do livro antes de criar o estilo"));
+        };
+        livro.criar_estilo(MODELO_DE_ESTILO)?;
+        montar(livro)
     }
 
     /// Lê o capítulo do disco e passa a acompanhá-lo. Abrir de novo relê:
@@ -135,12 +154,14 @@ fn montar(livro: &Livro) -> Result<LivroAberto, ErroDeComando> {
             "Esta pasta não tem nenhum capítulo: os capítulos são os arquivos .md dela.".to_owned(),
         );
     }
+    let mut aviso_sem_estilo = None;
     let (css, fontes) = match estilo_do_livro(livro) {
         Ok(Some(estilo)) => (Some(css_do(&estilo)), fontes_do(&estilo)),
         Ok(None) => {
-            avisos.push(
-                "Esta pasta não tem estilo.yaml: o editor está com a aparência padrão. \
-                 Copie o exemplos/estilo.yaml do md Novel para cá e ajuste."
+            aviso_sem_estilo = Some(
+                "Este livro ainda não tem estilo.yaml, o arquivo que diz a fonte, o tamanho, \
+                 a entrelinha e o recuo do texto. Sem ele a tela usa uma aparência padrão, e o \
+                 .docx sai com o estilo padrão do Pandoc."
                     .to_owned(),
             );
             (None, Vec::new())
@@ -160,6 +181,7 @@ fn montar(livro: &Livro) -> Result<LivroAberto, ErroDeComando> {
         css,
         fontes,
         avisos,
+        aviso_sem_estilo,
     })
 }
 
@@ -315,6 +337,7 @@ estilos:
             "corpo primeiro, sem repetir"
         );
         assert_eq!(livro.avisos, Vec::<String>::new());
+        assert_eq!(livro.aviso_sem_estilo, None);
         assert_eq!(sessao.livro_atual().expect("atual"), Some(livro));
     }
 
@@ -344,18 +367,73 @@ estilos:
         assert!(erro.mensagem.contains("pasta"), "{erro:?}");
     }
 
+    // Até 2026-11-24 o aviso da pasta sem estilo vinha em `avisos`, como os
+    // outros, e mandava copiar "o exemplos/estilo.yaml do md Novel" — um
+    // arquivo que o autor não sabia onde ficava. Agora ele vem à parte, em
+    // `aviso_sem_estilo`, porque a interface põe nele o botão que cria o
+    // estilo. `avisos` continua com os demais (estilo inválido, pasta sem
+    // capítulo), que não têm botão.
     #[test]
-    fn pasta_sem_estilo_abre_com_aviso_e_sem_css() {
+    fn pasta_sem_estilo_abre_com_o_aviso_que_oferece_criar_e_sem_css() {
         let pasta = pasta_com(&[("01.md", "um")]);
         let livro = Sessao::default().abrir_pasta(pasta.path()).expect("abrir");
         assert_eq!(livro.css, None);
         assert_eq!(nomes(&livro), ["01.md"]);
-        assert_eq!(livro.avisos.len(), 1, "{:?}", livro.avisos);
-        assert!(
-            livro.avisos[0].contains("estilo.yaml"),
-            "{:?}",
-            livro.avisos
+        assert_eq!(livro.avisos, Vec::<String>::new());
+        let aviso = livro.aviso_sem_estilo.expect("aviso da pasta sem estilo");
+        assert!(aviso.contains("estilo.yaml"), "{aviso}");
+        // Diz para que serve o arquivo, sem mandar procurar outro.
+        assert!(aviso.contains("fonte"), "{aviso}");
+        assert!(!aviso.contains("exemplos/"), "{aviso}");
+    }
+
+    #[test]
+    fn criar_estilo_grava_o_modelo_e_devolve_o_livro_com_o_css() {
+        let pasta = pasta_com(&[("01.md", "um")]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+
+        let livro = sessao.criar_estilo().expect("criar o estilo");
+
+        // O modelo é o `exemplos/estilo.yaml` do projeto, byte a byte.
+        let modelo = include_bytes!("../../../exemplos/estilo.yaml");
+        assert_eq!(
+            fs::read(pasta.path().join("estilo.yaml")).expect("ler o estilo"),
+            modelo
         );
+        assert!(livro.css.is_some(), "o modelo é um estilo válido");
+        assert_eq!(livro.aviso_sem_estilo, None);
+        assert_eq!(livro.avisos, Vec::<String>::new());
+        assert_eq!(
+            livro.fontes.first().map(String::as_str),
+            Some("EB Garamond")
+        );
+        assert_eq!(sessao.livro_atual().expect("atual"), Some(livro));
+    }
+
+    #[test]
+    fn criar_estilo_quando_ja_existe_e_erro_e_nao_muda_o_arquivo() {
+        let pasta = pasta_com(&[("01.md", "um")]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+        // Criado por fora depois de o livro abrir (outro computador, Dropbox).
+        fs::write(pasta.path().join("estilo.yaml"), ESTILO).expect("criar por fora");
+
+        let erro = sessao.criar_estilo().expect_err("já existe");
+
+        assert_eq!(erro.codigo, "erro");
+        assert!(erro.mensagem.contains("já existe"), "{erro:?}");
+        assert_eq!(
+            fs::read_to_string(pasta.path().join("estilo.yaml")).expect("ler"),
+            ESTILO
+        );
+    }
+
+    #[test]
+    fn criar_estilo_sem_livro_aberto_e_erro() {
+        let erro = Sessao::default().criar_estilo().expect_err("sem livro");
+        assert_eq!(erro.codigo, "erro");
+        assert!(erro.mensagem.contains("pasta"), "{erro:?}");
     }
 
     #[test]
@@ -370,6 +448,8 @@ estilos:
             "{:?}",
             livro.avisos
         );
+        // O estilo existe, só está errado: nada de botão para criar outro.
+        assert_eq!(livro.aviso_sem_estilo, None);
     }
 
     #[test]

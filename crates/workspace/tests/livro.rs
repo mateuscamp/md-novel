@@ -373,3 +373,81 @@ fn resumos_trazem_titulo_e_palavras_de_cada_capitulo_na_ordem() {
         ]
     );
 }
+
+// Criar o estilo.yaml é a única gravação do app na pasta do livro que não é
+// salvar um capítulo (ADR 0003, "Criar o estilo.yaml pelo app"). O autor
+// pede pelo botão; o que já existe nunca é trocado.
+const MODELO: &str = "versao: 1\ncorpo:\n  fonte: EB Garamond\n";
+
+#[test]
+fn criar_estilo_grava_o_texto_em_estilo_yaml_e_mais_nada() {
+    let pasta = pasta_com(&[("01.md", b"um")]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+
+    livro.criar_estilo(MODELO).expect("criar o estilo");
+
+    assert_eq!(
+        fs::read_to_string(pasta.path().join("estilo.yaml")).expect("ler o estilo"),
+        MODELO
+    );
+    // Sem temporário esquecido, e o capítulo intacto.
+    assert_eq!(nomes(pasta.path()), ["01.md", "estilo.yaml"]);
+    assert_eq!(livro.ler_estilo().expect("ler").as_deref(), Some(MODELO));
+}
+
+#[test]
+fn criar_estilo_nunca_grava_por_cima_de_um_que_ja_existe() {
+    let do_autor = b"versao: 1\ncorpo:\n  fonte: A do autor\n";
+    let pasta = pasta_com(&[("01.md", b"um"), ("estilo.yaml", do_autor)]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+
+    let erro = livro.criar_estilo(MODELO).expect_err("já existe");
+
+    assert!(
+        matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido.ends_with("estilo.yaml")),
+        "{erro:?}"
+    );
+    let mensagem = erro.to_string();
+    assert!(mensagem.contains("estilo.yaml"), "{mensagem}");
+    assert!(mensagem.contains("nada foi gravado"), "{mensagem}");
+    assert_eq!(
+        fs::read(pasta.path().join("estilo.yaml")).expect("ler"),
+        do_autor
+    );
+    assert_eq!(nomes(pasta.path()), ["01.md", "estilo.yaml"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn criar_estilo_nao_segue_link_nem_troca_o_link() {
+    // Um estilo.yaml que é link para outro arquivo já é um estilo: o do
+    // autor, guardado em outro lugar. Quebrado, também não vira arquivo novo.
+    let pasta = pasta_com(&[("01.md", b"um"), ("guardado.yaml", b"do autor")]);
+    std::os::unix::fs::symlink("guardado.yaml", pasta.path().join("estilo.yaml"))
+        .expect("criar o link");
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+    let ja_existe = |erro: ErroWorkspace| matches!(erro, ErroWorkspace::JaExiste { ref recebido } if recebido.ends_with("estilo.yaml"));
+    assert!(ja_existe(
+        livro
+            .criar_estilo(MODELO)
+            .expect_err("o link já é o estilo")
+    ));
+    assert_eq!(
+        fs::read(pasta.path().join("guardado.yaml")).expect("ler"),
+        b"do autor"
+    );
+    assert!(
+        fs::symlink_metadata(pasta.path().join("estilo.yaml"))
+            .expect("metadados")
+            .file_type()
+            .is_symlink()
+    );
+
+    fs::remove_file(pasta.path().join("guardado.yaml")).expect("quebrar o link");
+    assert!(ja_existe(
+        livro
+            .criar_estilo(MODELO)
+            .expect_err("o link quebrado também")
+    ));
+    assert_eq!(nomes(pasta.path()), ["01.md", "estilo.yaml"]);
+}

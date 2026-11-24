@@ -46,6 +46,11 @@ pub enum ErroWorkspace {
     )]
     MudouPorFora { caminho: PathBuf },
 
+    #[error(
+        "{recebido:?} já existe; nada foi gravado por cima. Para começar do modelo, renomeie ou apague o arquivo antes"
+    )]
+    JaExiste { recebido: PathBuf },
+
     #[error("erro de leitura ou escrita: {0}")]
     Io(#[from] std::io::Error),
 }

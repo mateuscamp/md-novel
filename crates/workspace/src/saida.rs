@@ -14,7 +14,8 @@ use crate::ErroWorkspace;
 
 const PREFIXO_DO_TEMPORARIO: &str = ".md-novel-gravando-";
 // `.md` entrou com o app: salvar um capítulo também passa por um temporário.
-const EXTENSOES_GERADAS: [&str; 3] = [".css", ".docx", ".md"];
+// `.yaml`, com o botão que cria o estilo.yaml do livro (ADR 0003).
+const EXTENSOES_GERADAS: [&str; 4] = [".css", ".docx", ".md", ".yaml"];
 const IDADE_DE_ORFAO: Duration = Duration::from_secs(60 * 60);
 
 /// Uma saída já escrita (ou a escrever) num temporário, ainda não publicada.
@@ -106,6 +107,24 @@ impl SaidaPendente {
         self.temporario
             .persist(&self.destino)
             .map_err(|erro| erro.error)?;
+        Ok(())
+    }
+
+    /// Publica só se o destino ainda não existe: a troca e a conferência são
+    /// uma operação só do sistema, então um arquivo que apareceu no meio do
+    /// caminho (a sincronização, outro programa) nunca é sobrescrito.
+    pub fn publicar_sem_sobrescrever(self) -> Result<(), ErroWorkspace> {
+        File::open(self.temporario.path())?.sync_all()?;
+        let destino = self.destino;
+        self.temporario
+            .persist_noclobber(&destino)
+            .map_err(|erro| {
+                if erro.error.kind() == std::io::ErrorKind::AlreadyExists {
+                    ErroWorkspace::JaExiste { recebido: destino }
+                } else {
+                    ErroWorkspace::Io(erro.error)
+                }
+            })?;
         Ok(())
     }
 }

@@ -9,7 +9,7 @@ pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
 gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
 passadas 4 e 5 gravam ao lado dele `<nome>-escuro.png` e `<nome>-foco.png`.
 
-Seis passadas:
+Sete passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -20,6 +20,8 @@ Seis passadas:
 4. tema escuro: a folha fica mais escura que a tinta.
 5. modo foco: somem a lateral e as barras, e os avisos continuam na tela.
 6. a escolha de tema fica guardada: clica no botão, fecha, abre de novo.
+7. criar o estilo.yaml: numa pasta sem ele, o botão do aviso grava o modelo,
+   a tela passa a usá-lo e o que foi digitado não se perde.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -145,6 +147,7 @@ class App:
         foco: bool = False,
         cliques_no_tema: int = 0,
         dados: pathlib.Path | None = None,
+        criar_estilo: bool = False,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -168,6 +171,8 @@ class App:
             ambiente["MD_NOVEL_TESTE_EXPORTAR"] = str(exportar_para)
         if foco:
             ambiente["MD_NOVEL_TESTE_FOCO"] = "1"
+        if criar_estilo:
+            ambiente["MD_NOVEL_TESTE_CRIAR_ESTILO"] = "1"
         self.processo = subprocess.Popen(
             [binario, str(pasta)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ambiente
         )
@@ -469,6 +474,40 @@ def passada_da_escolha_de_tema(binario: str, falhas: list[str]) -> None:
             falhas.append(f"passada 6: a escolha não ficou guardada: {app.linha_com('tema:')!r}")
 
 
+def passada_de_criar_o_estilo(binario: str, falhas: list[str]) -> None:
+    print("passada 7: criar o estilo.yaml pelo botão do aviso")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
+        pasta = pathlib.Path(temporaria)
+        original = montar_livro(pasta)
+        modelo = (pasta / "estilo.yaml").read_bytes()
+        (pasta / "estilo.yaml").unlink()
+        app = App(binario, pasta, criar_estilo=True)
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 7: a interface não chegou ao fim do roteiro")
+                return
+            if app.esperar_linha("salvo:") is None:
+                falhas.append("passada 7: o app não chegou a salvar")
+                return
+        finally:
+            app.encerrar()
+        antes = app.linha_com("linha do corpo:")
+        botao = app.linha_com("botão do estilo:")
+        depois = app.linha_com("depois de criar o estilo:")
+        if "css=false" not in app.linha_com("livro:") or "align=justify" in antes:
+            falhas.append(f"passada 7: a pasta sem estilo já abriu com estilo: {antes!r}")
+        if 'botão do estilo: "Criar estilo.yaml"' not in botao:
+            falhas.append(f"passada 7: o aviso não tem o botão de criar o estilo: {botao!r}")
+        # O corpo do modelo é justificado; sai o aviso com o botão e entra o de "feito".
+        if "align=justify" not in depois or "feito" not in depois:
+            falhas.append(f"passada 7: a tela não passou a usar o estilo criado: {depois!r}")
+        gravado = pasta / "estilo.yaml"
+        if not gravado.is_file() or gravado.read_bytes() != modelo:
+            falhas.append("passada 7: o estilo.yaml gravado não é o exemplos/estilo.yaml")
+        # O capítulo com a frase digitada, o outro intacto e mais nada na pasta.
+        conferir_disco(pasta, original, falhas, "passada 7")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -509,6 +548,7 @@ def principal() -> int:
     passada_do_tema_escuro(binario, captura, falhas)
     passada_do_modo_foco(binario, captura, falhas)
     passada_da_escolha_de_tema(binario, falhas)
+    passada_de_criar_o_estilo(binario, falhas)
     for falha in falhas:
         print(f"FALHOU: {falha}")
     print("teste funcional:", "reprovado" if falhas else "aprovado")

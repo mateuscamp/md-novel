@@ -121,6 +121,25 @@ impl Livro {
         self.pasta.join("estilo.yaml")
     }
 
+    /// Grava `texto` como o `estilo.yaml` do livro, só se ele ainda não
+    /// existe. É a única gravação na pasta do livro que não é salvar um
+    /// capítulo, e só acontece a pedido do autor (ADR 0003).
+    ///
+    /// Qualquer coisa com esse nome já conta como existir, inclusive um link
+    /// (mesmo quebrado): um link é o estilo do autor guardado em outro lugar,
+    /// e não é o md Novel que decide trocá-lo por um arquivo.
+    pub fn criar_estilo(&self, texto: &str) -> Result<(), ErroWorkspace> {
+        let destino = self.caminho_do_estilo();
+        if fs::symlink_metadata(&destino).is_ok() {
+            return Err(ErroWorkspace::JaExiste { recebido: destino });
+        }
+        let mut saida = SaidaPendente::preparar(&destino, "yaml")?;
+        saida.escrever(texto.as_bytes())?;
+        // Se o arquivo apareceu depois da conferência acima, é aqui que a
+        // gravação é recusada.
+        saida.publicar_sem_sobrescrever()
+    }
+
     /// O texto do `estilo.yaml`, ou `None` se o livro ainda não tem um.
     pub fn ler_estilo(&self) -> Result<Option<String>, ErroWorkspace> {
         let caminho = self.caminho_do_estilo();

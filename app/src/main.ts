@@ -25,6 +25,8 @@ interface LivroAberto {
   css: string | null;
   fontes: string[];
   avisos: string[];
+  /** O aviso da pasta sem estilo.yaml, que ganha o botão de criar o estilo. */
+  aviso_sem_estilo: string | null;
 }
 
 interface ExportacaoFeita {
@@ -111,6 +113,9 @@ let capituloAtual: string | null = null;
 let avisoDeGravacao: HTMLElement | null = null;
 /** Os avisos da última exportação, trocados a cada nova. */
 let avisosDaExportacao: HTMLElement[] = [];
+/** O aviso da pasta sem estilo.yaml, com o botão que cria o estilo. */
+let avisoSemEstilo: HTMLElement | null = null;
+let criandoEstilo = false;
 
 const gravador = new Gravador({
   gravar: (nome, texto) =>
@@ -373,6 +378,34 @@ function aplicarEstilo(livro: LivroAberto): void {
   }
 }
 
+const ROTULO_DE_CRIAR_O_ESTILO = "Criar estilo.yaml";
+
+/** O botão do aviso da pasta sem estilo: o Rust grava o modelo na pasta do
+ *  livro e devolve o CSS. O capítulo aberto não é relido: o que está
+ *  digitado continua na tela e segue para o disco pelo caminho de sempre. */
+async function criarEstilo(): Promise<void> {
+  // Um segundo clique antes da resposta daria "já existe" sem motivo.
+  if (criandoEstilo) return;
+  criandoEstilo = true;
+  try {
+    const livro = await invoke<LivroAberto>("criar_estilo");
+    avisoSemEstilo?.remove();
+    avisoSemEstilo = null;
+    aplicarEstilo(livro);
+    // A altura das linhas mudou com o CSS novo.
+    editor.view.requestMeasure();
+    avisar(
+      `Criei o estilo.yaml em ${livro.pasta}. Para trocar a fonte, o tamanho, a entrelinha ou o recuo, abra esse arquivo num editor de texto: cada linha tem um comentário dizendo o que faz. Depois de mexer nele, feche e abra o md Novel para ver a mudança.`,
+      "feito",
+    );
+    registrar(`estilo criado: css=${livro.css !== null}`);
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+  } finally {
+    criandoEstilo = false;
+  }
+}
+
 async function mostrarLivro(livro: LivroAberto): Promise<void> {
   capituloAtual = null;
   capitulos = livro.capitulos;
@@ -381,8 +414,15 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
   avisos.replaceChildren();
   avisoDeGravacao = null;
   avisosDaExportacao = [];
+  avisoSemEstilo = null;
   botaoExportar.disabled = false;
   livro.avisos.forEach((aviso) => avisar(aviso));
+  if (livro.aviso_sem_estilo !== null) {
+    avisoSemEstilo = avisar(livro.aviso_sem_estilo, "", {
+      rotulo: ROTULO_DE_CRIAR_O_ESTILO,
+      fazer: () => void criarEstilo(),
+    });
+  }
   aplicarEstilo(livro);
   desenharLista();
   mostrarContagem();
@@ -425,6 +465,20 @@ async function diagnosticar(): Promise<void> {
     registrar(`contagem antes: ${contagemNaTela()}`);
     editor.digitarNoFim(roteiro.digitar);
     registrar("digitado pelo roteiro de teste");
+    if (roteiro.criar_estilo) {
+      const botao = avisoSemEstilo?.querySelector("button:not(.fechar)");
+      registrar(`botão do estilo: "${botao?.textContent ?? "ausente"}"`);
+      // O clique de verdade, como o do autor; o aviso some quando o estilo chega.
+      (botao as HTMLButtonElement | null | undefined)?.click();
+      for (let espera = 0; espera < 100 && avisoSemEstilo !== null; espera += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const classes = [...avisos.children].map((aviso) => aviso.className || "comum").join(",");
+      registrar(
+        `depois de criar o estilo: ${medir(".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)")} avisos=${classes}`,
+      );
+    }
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
       await invoke("teste_pedir_para_fechar");
@@ -457,6 +511,7 @@ interface RoteiroDeTeste {
   tema: string | null;
   cliques_no_tema: number;
   foco: boolean;
+  criar_estilo: boolean;
 }
 
 /** As contagens como estão escritas na tela. */

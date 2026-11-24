@@ -240,6 +240,35 @@ O autor procurou o app no menu e não achou: só existia o binário dentro de
   Mover a pasta depois de instalar quebra a entrada; `make instalar` de
   novo conserta.
 
+## Criar o estilo.yaml pelo app (2026-11-24)
+
+O autor abriu um livro sem `estilo.yaml` e não entendeu o aviso: ele mandava
+copiar "o exemplos/estilo.yaml do md Novel", um arquivo dentro do
+repositório, que quem instalou pelo menu não sabe onde está. Ele escolheu um
+botão no próprio aviso.
+
+- **O aviso da pasta sem estilo diz para que o arquivo serve e traz o botão
+  "Criar estilo.yaml".** O Rust manda esse aviso à parte dos outros
+  (`aviso_sem_estilo`), porque só ele tem ação.
+- **O modelo é o `exemplos/estilo.yaml`, embutido no programa.** Um arquivo
+  só: o exemplo que o README manda copiar e o que o botão grava não
+  divergem. O app instalado não depende da pasta do projeto.
+- **É a única gravação do app na pasta do livro que não é salvar um
+  capítulo**, e só acontece no clique. Quem grava é
+  `workspace::Livro::criar_estilo`, por temporário e troca que recusa
+  sobrescrever: se já existe qualquer coisa chamada `estilo.yaml` (arquivo,
+  link, link quebrado), nada é gravado. Um estilo inválido não ganha botão:
+  ele já é o estilo do autor, só com um erro.
+- **A página não manda caminho nem conteúdo.** O comando não tem argumento.
+- **O capítulo aberto não é relido** ao criar o estilo: só o CSS muda. O que
+  foi digitado continua na tela e vai para o disco pelo caminho de sempre.
+- **Custo aceito:** o temporário `.md-novel-gravando-*` pode terminar também
+  em `.yaml`, e a faxina de órfãos passou a recolhê-lo. E o estilo criado
+  pede as fontes do modelo (EB Garamond e Courier Prime); em máquina sem
+  elas o aviso do estilo dá lugar ao aviso da fonte.
+- **Fica de fora:** editar o estilo por dentro do app. Mudou o arquivo,
+  fecha e abre.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -251,6 +280,9 @@ O autor procurou o app no menu e não achou: só existia o binário dentro de
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |
+| O estilo criado pelo app nunca sobrescreve | `crates/workspace/tests/livro.rs` (`criar_estilo_*`) | `make check` | criar o estilo com um `estilo.yaml` já na pasta (arquivo ou link) muda algum byte, ou deixa outro arquivo na pasta |
+| O botão grava o exemplo do projeto e devolve o livro com CSS | testes `criar_estilo_*` de `app/src-tauri/src/sessao.rs` | `make check` | o arquivo gravado difere de `exemplos/estilo.yaml`, o livro volta sem CSS ou o aviso continua |
+| Criar o estilo na janela de verdade | `app/teste_funcional.py`, passada 7 | à mão, fora do CI | o aviso sem o botão, a linha do corpo sem o alinhamento do modelo depois do clique, a frase digitada perdida ou arquivo a mais na pasta |
 | A moldura na janela de verdade | `app/teste_funcional.py`, passadas 1, 4, 5 e 6 | à mão, fora do CI | contagem na tela diferente da conta do teste, título colado com tamanho de título, tema sem efeito ou esquecido ao reabrir, barras visíveis no modo foco ou aviso escondido nele |
 
 Regra derivada no `AGENTS.md`, quando aceito: o app (`src-tauri`) é
