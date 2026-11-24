@@ -560,3 +560,59 @@ fn nome_de_capitulo_que_sai_da_pasta_ou_nao_serve_de_arquivo_e_recusado() {
     assert_eq!(nomes(&base.path().join("livro")), Vec::<String>::new());
     assert_eq!(nomes(base.path()), ["livro"]);
 }
+
+// O painel "Estilo" do app grava o estilo.yaml (ADR 0003). Como no capítulo,
+// só grava se o arquivo está como o painel o leu: o que mudou por fora nunca
+// é trocado.
+#[test]
+fn gravar_estilo_cria_o_arquivo_que_nao_existia_e_troca_o_que_o_painel_leu() {
+    let pasta = pasta_com(&[("01.md", b"um")]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+
+    livro.gravar_estilo("primeiro\n", None).expect("criar");
+    assert_eq!(
+        livro.ler_estilo().expect("ler").as_deref(),
+        Some("primeiro\n")
+    );
+    livro
+        .gravar_estilo("segundo\n", Some("primeiro\n"))
+        .expect("trocar");
+    assert_eq!(
+        livro.ler_estilo().expect("ler").as_deref(),
+        Some("segundo\n")
+    );
+    // Gravar o que já está lá não é erro nem deixa temporário.
+    livro
+        .gravar_estilo("segundo\n", Some("segundo\n"))
+        .expect("igual");
+    assert_eq!(nomes(pasta.path()), ["01.md", "estilo.yaml"]);
+}
+
+#[test]
+fn gravar_estilo_recusa_quando_o_arquivo_nao_esta_como_o_painel_leu() {
+    let do_autor = "editado à mão\n";
+    let pasta = pasta_com(&[("01.md", b"um"), ("estilo.yaml", do_autor.as_bytes())]);
+    let livro = Livro::abrir(pasta.path()).expect("abrir");
+    // O painel leu outra coisa, ou leu "não existe": o arquivo mudou por fora.
+    for lido in [Some("o que o painel leu\n"), None] {
+        let erro = livro.gravar_estilo("do painel\n", lido).expect_err("mudou");
+        assert!(
+            matches!(erro, ErroWorkspace::EstiloMudouPorFora { .. }),
+            "{erro:?}"
+        );
+        assert!(erro.to_string().contains("estilo.yaml"), "{erro}");
+        assert!(erro.to_string().contains("nada foi gravado"), "{erro}");
+    }
+    assert_eq!(livro.ler_estilo().expect("ler").as_deref(), Some(do_autor));
+
+    // E o contrário: o painel leu um arquivo que foi apagado por fora.
+    fs::remove_file(pasta.path().join("estilo.yaml")).expect("apagar");
+    let erro = livro
+        .gravar_estilo("do painel\n", Some(do_autor))
+        .expect_err("sumiu");
+    assert!(
+        matches!(erro, ErroWorkspace::EstiloMudouPorFora { .. }),
+        "{erro:?}"
+    );
+    assert_eq!(nomes(pasta.path()), ["01.md"]);
+}

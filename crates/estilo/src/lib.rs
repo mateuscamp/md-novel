@@ -20,4 +20,6 @@ pub use css::{SeletorCss, gerar_css};
 pub use docx::gerar_reference_docx;
 pub use erro::ErroEstilo;
 pub use medida::{Medida, Unidade};
-pub use modelo::{Alinhamento, Entrelinha, Estilo, EstiloParagrafo, Fonte, TamanhoFonte};
+pub use modelo::{
+    Alinhamento, Campos, CamposTrocados, Entrelinha, Estilo, EstiloParagrafo, Fonte, TamanhoFonte,
+};

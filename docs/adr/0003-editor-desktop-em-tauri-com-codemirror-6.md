@@ -266,8 +266,8 @@ botão no próprio aviso.
   em `.yaml`, e a faxina de órfãos passou a recolhê-lo. E o estilo criado
   pede as fontes do modelo (EB Garamond e Courier Prime); em máquina sem
   elas o aviso do estilo dá lugar ao aviso da fonte.
-- **Fica de fora:** editar o estilo por dentro do app. Mudou o arquivo,
-  fecha e abre.
+- **Ficava de fora** editar o estilo por dentro do app; a seção "O painel
+  de estilo", abaixo, mudou isso no mesmo dia.
 
 ## A quarta fatia: conforto de quem escreve (2026-11-24)
 
@@ -382,6 +382,42 @@ O autor pediu para criar capítulo sem sair do programa.
   estava no capítulo é conferido sem ser tocado (o teste confere o que foi
   digitado). No Mac, nada foi conferido.
 
+## O painel de estilo (2026-11-24)
+
+Depois de criar o estilo pelo botão, o app mandava o autor abrir o
+`estilo.yaml` num editor de texto e reabrir o programa. Ele recusou: "deve
+ser possível editar pelo aplicativo, de forma intuitiva como o Word". Isto
+substitui o "fica de fora" da seção "Criar o estilo.yaml pelo app".
+
+- **O botão "Estilo" abre um painel ao lado da folha**, com um campo por
+  propriedade: fonte, tamanho, entrelinha, alinhamento, recuo, espaços,
+  itálico e negrito. Cada mudança aparece na hora no texto e vai para o
+  `estilo.yaml`, sem botão de salvar, como o resto do app.
+- **O app passa a ser quem escreve o `estilo.yaml`.** O arquivo continua
+  sendo a fonte única (ADR 0002) e continua editável à mão, mas o painel o
+  reescreve inteiro: comentários feitos à mão não sobrevivem, e o cabeçalho
+  do arquivo diz isso. É o custo de editar por formulário.
+- **A página manda os valores dos campos, nunca o texto do arquivo nem um
+  caminho.** O crate `estilo` os valida pelo mesmo caminho do arquivo
+  (`Estilo::de_campos`) e escreve o YAML (`Estilo::para_yaml`); valor que o
+  Word não guarda é recusado, com o aviso no painel, e nada é gravado.
+- **Estilo nomeado é "baseado em" o texto do livro**, como no Word: o painel
+  e o arquivo guardam só o que ele troca, e mudar o texto do livro muda os
+  estilos nomeados no que eles herdam. O painel marca o campo herdado.
+  Voltar um campo ao valor do texto do livro volta a herdar.
+- **O que mudou por fora não é trocado.** A sessão guarda o texto do
+  `estilo.yaml` como o painel o leu; `workspace::Livro::gravar_estilo` só
+  grava se o disco ainda está assim, como num capítulo.
+- **Um `estilo.yaml` com erro não abre no painel:** o painel não tem como
+  mostrar o que não leu, e gravar por cima apagaria o que o autor escreveu.
+- **Sem `estilo.yaml`, o painel abre com o modelo e nada é gravado** até a
+  primeira mudança.
+- **Fica de fora:** escolher a fonte numa lista de todas as instaladas (a
+  página não tem como listá-las; há uma lista de fontes comuns e o campo
+  aceita qualquer nome), aplicar um estilo nomeado a um trecho pelo painel
+  (continua sendo o bloco `:::`), e avisar que um estilo apagado ainda é
+  usado num capítulo.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -400,6 +436,10 @@ O autor pediu para criar capítulo sem sair do programa.
 | Capítulo novo na janela de verdade | `app/teste_funcional.py`, passada 11 | à mão, fora do CI | o botão não sugere o próximo número, o capítulo não é criado vazio, listado e aberto, o texto do capítulo anterior não é salvo antes, ou o nome repetido é aceito |
 | Aviso do corretor | testes de `app/src-tauri/src/corretor.rs` (só no Linux) | `make check` | com o dicionário da língua carregado ainda há aviso, ou sem ele o aviso não diz a língua e o pacote |
 | O corretor na janela de verdade | `app/teste_funcional.py`, passada 12, com o `hunspell-pt-br` instalado | à mão, fora do CI | o dicionário não é carregado, duas palavras erradas digitadas não ganham o sublinhado vermelho na fotografia da tela, ou pedir uma língua sem dicionário não mostra o aviso |
+| O estilo escrito lê de volta igual | `crates/estilo/tests/painel.rs` | `make check` | o YAML que o app escreve não dá o mesmo estilo ao ser lido, um estilo nomeado deixa de herdar, um campo inválido é aceito, ou o formulário não tem as mesmas chaves do estilo |
+| O painel não grava por cima do que mudou | `gravar_estilo_*` em `crates/workspace/tests/livro.rs` e os testes `o_painel_*` de `sessao.rs` | `make check` | o `estilo.yaml` que mudou, apareceu ou sumiu por fora é trocado, ou um valor inválido chega ao disco |
+| Regras do formulário | `app/src/painel.test.ts` | `make check` | o estilo nomeado não herda do texto do livro, uma propriedade do estilo fica sem campo no painel, ou uma medida não vai e volta |
+| O painel na janela de verdade | `app/teste_funcional.py`, passada 13 | à mão, fora do CI | a mudança no painel não aparece no texto na hora, não chega ao `estilo.yaml`, o estilo nomeado não herda, criar ou apagar estilo falha, ou o valor inválido é gravado |
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |

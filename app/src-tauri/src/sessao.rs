@@ -1,11 +1,11 @@
 //! O que o app tem aberto: um livro e os capítulos já lidos. Sem tauri aqui,
 //! para a lógica ser testada sem abrir janela; `main.rs` só repassa.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-use estilo::{Estilo, SeletorCss, gerar_css};
-use serde::Serialize;
+use estilo::{Campos, CamposTrocados, Estilo, SeletorCss, gerar_css};
+use serde::{Deserialize, Serialize};
 use workspace::{Capitulo, ErroWorkspace, Gravacao, Livro};
 
 use crate::exportacao::PlanoDeExportacao;
@@ -47,6 +47,17 @@ pub struct ErroDeComando {
     pub mensagem: String,
 }
 
+/// O estilo do livro como o painel "Estilo" o edita, na forma do
+/// `estilo.yaml`: o corpo com todas as propriedades, e cada estilo nomeado só
+/// com as que ele troca (o resto ele herda do corpo).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EstiloNoPainel {
+    pub corpo: Campos,
+    pub estilos: BTreeMap<String, CamposTrocados>,
+    /// O livro já tem `estilo.yaml`. Sem ele, o painel mostra o modelo.
+    pub existe: bool,
+}
+
 /// O capítulo que o autor acabou de criar, e o livro relido com ele na lista.
 #[derive(Debug, PartialEq, Serialize)]
 pub struct CapituloCriado {
@@ -63,6 +74,10 @@ const MODELO_DE_ESTILO: &str = include_str!("../../../exemplos/estilo.yaml");
 pub struct Sessao {
     livro: Option<Livro>,
     capitulos: HashMap<String, Capitulo>,
+    /// O texto do `estilo.yaml` como o painel de estilo o leu ou gravou por
+    /// último (`Some(None)`: não existia). `None`: o painel não foi aberto
+    /// neste livro.
+    estilo_lido: Option<Option<String>>,
 }
 
 impl Sessao {
@@ -75,6 +90,7 @@ impl Sessao {
         let aberto = montar(&livro)?;
         self.livro = Some(livro);
         self.capitulos.clear();
+        self.estilo_lido = None;
         Ok(aberto)
     }
 
@@ -91,6 +107,64 @@ impl Sessao {
         };
         livro.criar_estilo(MODELO_DE_ESTILO)?;
         montar(livro)
+    }
+
+    /// O estilo do livro para o painel "Estilo" mostrar: o do `estilo.yaml`
+    /// ou, sem ele, o modelo. Só lê; nada é gravado ao abrir o painel. A
+    /// sessão guarda o texto lido, para a gravação saber se o arquivo mudou
+    /// por fora.
+    pub fn estilo_para_editar(&mut self) -> Result<EstiloNoPainel, ErroDeComando> {
+        let Some(livro) = &self.livro else {
+            return Err(erro("abra a pasta do livro antes de mexer no estilo"));
+        };
+        let lido = livro.ler_estilo()?;
+        let estilo = Estilo::de_yaml(lido.as_deref().unwrap_or(MODELO_DE_ESTILO)).map_err(
+            |motivo| {
+                erro(&format!(
+                    "O estilo.yaml deste livro tem um erro, e o painel não consegue mostrá-lo. \
+                     Conserte o arquivo num editor de texto, ou apague-o para começar do modelo. {motivo}"
+                ))
+            },
+        )?;
+        let painel = EstiloNoPainel {
+            corpo: Campos::from(&estilo.corpo),
+            estilos: estilo
+                .estilos
+                .iter()
+                .map(|(nome, paragrafo)| {
+                    (
+                        nome.clone(),
+                        CamposTrocados::entre(paragrafo, &estilo.corpo),
+                    )
+                })
+                .collect(),
+            existe: lido.is_some(),
+        };
+        self.estilo_lido = Some(lido);
+        Ok(painel)
+    }
+
+    /// Grava o estilo que o painel mostra e devolve o livro com o CSS novo.
+    /// Valor que o Word não guarda é recusado, e o arquivo que mudou por fora
+    /// desde que o painel abriu não é trocado.
+    pub fn salvar_estilo(&mut self, painel: EstiloNoPainel) -> Result<LivroAberto, ErroDeComando> {
+        let (Some(livro), Some(lido)) = (&self.livro, &self.estilo_lido) else {
+            return Err(erro("abra o painel de estilo antes de mudar o estilo"));
+        };
+        let EstiloNoPainel {
+            corpo,
+            estilos,
+            existe: _,
+        } = painel;
+        let estilo = Estilo::de_campos(corpo, estilos)
+            .map_err(|motivo| erro(&erro_para_o_painel(&motivo.to_string())))?;
+        let novo = estilo
+            .para_yaml()
+            .map_err(|motivo| erro(&motivo.to_string()))?;
+        livro.gravar_estilo(&novo, lido.as_deref())?;
+        let aberto = montar(livro)?;
+        self.estilo_lido = Some(Some(novo));
+        Ok(aberto)
     }
 
     /// Cria um capítulo vazio no livro aberto. O nome vem do autor e é
@@ -206,6 +280,19 @@ fn montar(livro: &Livro) -> Result<LivroAberto, ErroDeComando> {
 }
 
 /// O nome do livro é o nome da pasta dele.
+/// O erro de validação do estilo, dito para quem está no formulário: sem o
+/// "estilo.yaml inválido" do começo nem a linha e a coluna do fim, que são do
+/// texto que o formulário virou por dentro e o autor nunca viu.
+fn erro_para_o_painel(mensagem: &str) -> String {
+    let sem_prefixo = mensagem
+        .strip_prefix("estilo.yaml inválido: ")
+        .unwrap_or(mensagem);
+    let sem_posicao = sem_prefixo
+        .rfind(" (linha ")
+        .map_or(sem_prefixo, |corte| &sem_prefixo[..corte]);
+    format!("Esse valor não serve, e nada foi gravado. {sem_posicao}")
+}
+
 fn nome_da(pasta: &Path) -> String {
     pasta.file_name().map_or_else(
         || pasta.display().to_string(),
@@ -477,6 +564,130 @@ estilos:
             .criar_capitulo("03")
             .expect_err("sem livro");
         assert!(sem_livro.mensagem.contains("pasta"), "{sem_livro:?}");
+    }
+
+    #[test]
+    fn o_painel_abre_com_o_estilo_do_livro_e_grava_o_que_o_autor_muda() {
+        let pasta = pasta_com(&[("01.md", "um"), ("estilo.yaml", ESTILO)]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+
+        let mut painel = sessao.estilo_para_editar().expect("abrir o painel");
+        assert!(painel.existe);
+        assert_eq!(painel.corpo.fonte, "EB Garamond");
+        assert_eq!(painel.corpo.tamanho, "12pt");
+        assert_eq!(painel.estilos["Epígrafe"].italico, Some(true));
+        assert_eq!(
+            painel.estilos["Carta"].fonte.as_deref(),
+            Some("Courier Prime")
+        );
+        // O estilo nomeado chega só com o que troca: o resto ele herda.
+        assert_eq!(painel.estilos["Epígrafe"].fonte, None);
+        assert_eq!(painel.estilos["Epígrafe"].tamanho, None);
+
+        painel.corpo.tamanho = "14pt".to_owned();
+        painel.corpo.alinhamento = "esquerda".to_owned();
+        let livro = sessao.salvar_estilo(painel.clone()).expect("gravar");
+
+        let css = livro.css.expect("css");
+        assert!(css.contains("font-size: calc(14pt"), "{css}");
+        assert!(css.contains("text-align: left"), "{css}");
+        let gravado = fs::read_to_string(pasta.path().join("estilo.yaml")).expect("ler");
+        assert!(gravado.contains("\n  tamanho: 14pt\n"), "{gravado}");
+        // A epígrafe continua herdando: o tamanho novo vale para ela também.
+        assert!(!gravado.contains("tamanho: 12pt"), "{gravado}");
+        // Gravar de novo, em seguida, continua valendo: o painel acompanha o que ele mesmo gravou.
+        painel.corpo.negrito = true;
+        sessao.salvar_estilo(painel).expect("gravar de novo");
+    }
+
+    #[test]
+    fn sem_estilo_o_painel_abre_com_o_modelo_e_o_primeiro_ajuste_cria_o_arquivo() {
+        let pasta = pasta_com(&[("01.md", "um")]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+
+        let mut painel = sessao.estilo_para_editar().expect("abrir o painel");
+        assert!(!painel.existe);
+        assert_eq!(painel.corpo.fonte, "EB Garamond", "o modelo");
+        assert!(
+            !pasta.path().join("estilo.yaml").exists(),
+            "abrir o painel não grava"
+        );
+
+        painel.corpo.fonte = "Liberation Serif".to_owned();
+        let livro = sessao.salvar_estilo(painel).expect("gravar");
+        assert_eq!(livro.aviso_sem_estilo, None);
+        assert_eq!(
+            livro.fontes.first().map(String::as_str),
+            Some("Liberation Serif")
+        );
+        assert!(pasta.path().join("estilo.yaml").is_file());
+    }
+
+    #[test]
+    fn o_painel_nao_grava_por_cima_do_que_mudou_por_fora_nem_valor_invalido() {
+        let pasta = pasta_com(&[("01.md", "um"), ("estilo.yaml", ESTILO)]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+        let mut painel = sessao.estilo_para_editar().expect("abrir o painel");
+
+        // Valor que o Word não guarda: nada é gravado, e o erro diz o valor.
+        let mut invalido = painel.clone();
+        invalido.corpo.tamanho = "5000pt".to_owned();
+        let erro = sessao.salvar_estilo(invalido).expect_err("inválido");
+        assert!(erro.mensagem.contains("5000pt"), "{erro:?}");
+        // Dito para quem está no formulário: sem a linha do arquivo.
+        assert!(erro.mensagem.contains("nada foi gravado"), "{erro:?}");
+        assert!(!erro.mensagem.contains("linha"), "{erro:?}");
+        assert!(!erro.mensagem.contains("inválido:"), "{erro:?}");
+        assert_eq!(
+            fs::read_to_string(pasta.path().join("estilo.yaml")).expect("ler"),
+            ESTILO
+        );
+
+        // Mudou por fora depois de o painel abrir.
+        let por_fora = ESTILO.replace("12pt", "13pt");
+        fs::write(pasta.path().join("estilo.yaml"), &por_fora).expect("mudar por fora");
+        painel.corpo.negrito = true;
+        let erro = sessao.salvar_estilo(painel).expect_err("mudou por fora");
+        assert!(erro.mensagem.contains("mudou no disco"), "{erro:?}");
+        assert_eq!(
+            fs::read_to_string(pasta.path().join("estilo.yaml")).expect("ler"),
+            por_fora
+        );
+    }
+
+    #[test]
+    fn o_painel_nao_abre_com_estilo_invalido_nem_grava_sem_ter_aberto() {
+        let ruim = ESTILO.replace("1.25cm", "1,25cm");
+        let pasta = pasta_com(&[("01.md", "um"), ("estilo.yaml", &ruim)]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+        let erro = sessao.estilo_para_editar().expect_err("inválido");
+        assert!(erro.mensagem.contains("1,25cm"), "{erro:?}");
+
+        let outra = pasta_com(&[("01.md", "um"), ("estilo.yaml", ESTILO)]);
+        sessao.abrir_pasta(outra.path()).expect("abrir");
+        let painel = Sessao::default().estilo_para_editar();
+        assert!(painel.is_err(), "sem livro");
+        // Trocar de livro esquece o painel: gravar sem abrir de novo é erro,
+        // mesmo quando os dois livros têm o estilo.yaml igualzinho (os dois
+        // começaram do modelo) e a conferência do disco não notaria nada.
+        let gemeo = pasta_com(&[("01.md", "um"), ("estilo.yaml", ESTILO)]);
+        let mut de_outra = Sessao::default();
+        de_outra.abrir_pasta(outra.path()).expect("abrir");
+        let mut aberto = de_outra.estilo_para_editar().expect("abrir o painel");
+        aberto.corpo.negrito = true;
+        de_outra.abrir_pasta(gemeo.path()).expect("trocar de livro");
+        let erro = de_outra
+            .salvar_estilo(aberto)
+            .expect_err("painel de outro livro");
+        assert!(erro.mensagem.contains("painel"), "{erro:?}");
+        assert_eq!(
+            fs::read_to_string(gemeo.path().join("estilo.yaml")).expect("ler"),
+            ESTILO
+        );
     }
 
     #[test]

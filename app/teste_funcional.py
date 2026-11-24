@@ -4,8 +4,8 @@ chegou ao disco e o que o navegador aplicou.
 
 Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
 
-`--passada=N` roda só a passada N (de 1 a 12), para conferir uma mudança sem
-esperar as outras; dizer que a interface funciona pede as doze.
+`--passada=N` roda só a passada N (de 1 a 13), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as treze.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
@@ -13,7 +13,7 @@ gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
 passadas 4, 5 e 12 gravam ao lado dele `<nome>-escuro.png`, `<nome>-foco.png`
 e `<nome>-corretor.png`.
 
-Doze passadas:
+Treze passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -41,6 +41,9 @@ Doze passadas:
     erradas digitadas ganham o sublinhado vermelho (contado na fotografia da
     tela); pedindo uma língua sem dicionário, o app avisa. Só no Linux e no
     display virtual; sem o `hunspell-pt-br` instalado esta passada reprova.
+13. painel de estilo: mudar o tamanho e o alinhamento no painel muda o texto
+    na hora e o estilo.yaml; o estilo nomeado herda; cria-se e apaga-se um
+    estilo; um valor que o Word não guarda fica só no aviso do painel.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -173,6 +176,7 @@ class App:
         capitulo_novo: bool = False,
         corretor: bool = False,
         lingua_do_corretor: str | None = None,
+        painel_de_estilo: bool = False,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -208,6 +212,8 @@ class App:
             ambiente["MD_NOVEL_TESTE_CAPITULO_NOVO"] = "1"
         if corretor:
             ambiente["MD_NOVEL_TESTE_CORRETOR"] = "1"
+        if painel_de_estilo:
+            ambiente["MD_NOVEL_TESTE_PAINEL_DE_ESTILO"] = "1"
         ambiente.pop("MD_NOVEL_TESTE_LINGUA_DO_CORRETOR", None)
         if lingua_do_corretor is not None:
             ambiente["MD_NOVEL_TESTE_LINGUA_DO_CORRETOR"] = lingua_do_corretor
@@ -795,6 +801,53 @@ def passada_do_corretor(binario: str, captura: str | None, falhas: list[str]) ->
             falhas.append(f"passada 12: o aviso do corretor não está na tela: {app.linha_com('livro:')!r}")
 
 
+def passada_do_painel_de_estilo(binario: str, captura: str | None, falhas: list[str]) -> None:
+    print("passada 13: mudar o estilo pelo painel")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
+        pasta = pathlib.Path(temporaria)
+        original = montar_livro(pasta)
+        app = App(binario, pasta, painel_de_estilo=True)
+        try:
+            if app.esperar_linha("painel: opções=") is None:
+                falhas.append("passada 13: a interface não chegou ao fim do roteiro do painel")
+                return
+            capturar_se_pedido(app, captura, "-estilo")
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 13: a interface não chegou ao fim do roteiro")
+                return
+        finally:
+            app.encerrar()
+        # O roteiro do painel leva segundos: o capítulo foi salvo no meio dele.
+        if not app.linha_com("salvo:"):
+            falhas.append("passada 13: o app não chegou a salvar o capítulo")
+        aberto = app.linha_com("painel: aberto")
+        esperado = 'aberto=true fonte="EB Garamond" tamanho=12pt opções=Texto do livro|Carta|Epígrafe|Separador antes[tamanho=16px alinhamento=justify]'
+        if esperado not in aberto:
+            falhas.append(f"passada 13: o painel não abriu com o estilo do livro: {aberto!r}")
+        depois = app.linha_com("painel: texto do livro")
+        # 14 pt são 18,67 px; a mudança aparece no texto sem reabrir nada.
+        if "depois[tamanho=18.66" not in depois or "alinhamento=left]" not in depois or "Salvo" not in depois:
+            falhas.append(f"passada 13: o texto não mudou na hora com o painel: {depois!r}")
+        if "epígrafe tamanho=14 herdado=true itálico=true" not in app.linha_com("painel: epígrafe"):
+            falhas.append(f"passada 13: o estilo nomeado não herdou o tamanho novo: {app.linha_com('painel: epígrafe')!r}")
+        fim = app.linha_com("painel: opções=")
+        if "opções=Texto do livro|Carta|Destaque|Epígrafe erro=" not in fim or "5000pt" not in fim or "linha" in fim:
+            falhas.append(f"passada 13: criar e apagar estilo, ou o aviso do valor inválido: {fim!r}")
+        gravado = (pasta / "estilo.yaml").read_text(encoding="utf-8")
+        blocos = {
+            nome: "".join(re.findall(rf"(?ms)^  {nome}:\n((?:    .*\n)*)", gravado))
+            for nome in ("Destaque", "Epígrafe", "Separador")
+        }
+        if "\n  tamanho: 14pt\n" not in gravado or "\n  alinhamento: esquerda\n" not in gravado or "5000" in gravado:
+            falhas.append(f"passada 13: o estilo.yaml não ficou com o texto do livro em 14pt à esquerda:\n{gravado}")
+        if "negrito: true" not in blocos["Destaque"] or "  Separador:" in gravado:
+            falhas.append(f"passada 13: o estilo novo ou o apagado não chegaram ao estilo.yaml:\n{gravado}")
+        if "tamanho" in blocos["Epígrafe"] or "italico: true" not in blocos["Epígrafe"]:
+            falhas.append(f"passada 13: a epígrafe deixou de herdar o tamanho no estilo.yaml:\n{gravado}")
+        # O manuscrito: só a frase digitada, e mais nada na pasta.
+        conferir_disco(pasta, original, falhas, "passada 13")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -824,11 +877,11 @@ def principal() -> int:
     argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
     so_a_passada = None
     for opcao in opcoes:
-        escolhida = re.fullmatch(r"--passada=([1-9]|1[012])", opcao)
+        escolhida = re.fullmatch(r"--passada=([1-9]|1[0123])", opcao)
         if escolhida is not None:
             so_a_passada = int(escolhida[1])
         elif opcao != "--na-tela":
-            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 12")
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 13")
             return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
@@ -855,6 +908,7 @@ def principal() -> int:
         lambda: passada_da_sessao(binario, falhas),
         lambda: passada_do_capitulo_novo(binario, falhas),
         lambda: passada_do_corretor(binario, captura, falhas),
+        lambda: passada_do_painel_de_estilo(binario, captura, falhas),
     ]
     for numero, passada in enumerate(passadas, start=1):
         if so_a_passada is None or so_a_passada == numero:

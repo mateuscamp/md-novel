@@ -22,6 +22,20 @@ import { criarEditor } from "./editor.ts";
 import { teclaDoFoco } from "./foco.ts";
 import { fonteInstalada, linhaSimples } from "./fonte.ts";
 import { type Estado, Gravador } from "./gravador.ts";
+import {
+  type Alinhamento,
+  type Campos,
+  camposDe,
+  comCampo,
+  comEstiloNovo,
+  type EstiloNoPainel,
+  FONTES_SUGERIDAS,
+  herdado,
+  juntarMedida,
+  nomeDeEstiloNovo,
+  partirMedida,
+  semEstilo,
+} from "./painel.ts";
 import { diaDe, escreverHoje, lerHoje, lerMeta, META_MAXIMA, rotuloDeHoje } from "./meta.ts";
 import { escreverOnde, lerOnde } from "./onde.ts";
 import {
@@ -399,8 +413,13 @@ async function exportar(): Promise<void> {
   }
 }
 
+/** Os avisos de fonte que falta, trocados a cada vez que o estilo muda. */
+let avisosDeFonte: HTMLElement[] = [];
+
 function aplicarEstilo(livro: LivroAberto): void {
   cssDoLivro.replaceSync(livro.css ?? "");
+  avisosDeFonte.forEach((aviso) => aviso.remove());
+  avisosDeFonte = [];
   const [corpo] = livro.fontes;
   if (corpo === undefined) {
     document.documentElement.style.removeProperty("--md-novel-linha-simples");
@@ -409,8 +428,10 @@ function aplicarEstilo(livro: LivroAberto): void {
   document.documentElement.style.setProperty("--md-novel-linha-simples", String(linhaSimples(corpo)));
   for (const fonte of livro.fontes) {
     if (!fonteInstalada(fonte)) {
-      avisar(
-        `A fonte "${fonte}" do estilo.yaml não está instalada neste computador: a tela está usando outra, e o Word vai escolher a dele. Instale a fonte para ver o livro como ele vai sair.`,
+      avisosDeFonte.push(
+        avisar(
+          `A fonte "${fonte}" do estilo do livro não está instalada neste computador: a tela está usando outra, e o Word vai escolher a dele. Instale a fonte, ou escolha outra no painel "Estilo".`,
+        ),
       );
     }
   }
@@ -492,6 +513,214 @@ campoDaMeta.addEventListener("keydown", (evento) => {
   editor.focar();
 });
 
+// ---- O painel de estilo ----
+
+// O autor muda o estilo num formulário, como no Word, e cada mudança aparece
+// na hora no texto e vai para o estilo.yaml. Quem valida e grava é o Rust.
+const painelDoEstilo = elemento("painel-do-estilo");
+const botaoDoEstilo = elemento<HTMLButtonElement>("abrir-estilo");
+const estiloEscolhidoNoPainel = elemento<HTMLSelectElement>("estilo-escolhido");
+const botaoNovoEstilo = elemento<HTMLButtonElement>("novo-estilo");
+const botaoApagarEstilo = elemento<HTMLButtonElement>("apagar-estilo");
+const campoDoNomeDoEstilo = elemento<HTMLInputElement>("nome-do-estilo-novo");
+const campoDaFonte = elemento<HTMLInputElement>("campo-fonte");
+const campoDaEntrelinha = elemento<HTMLInputElement>("campo-entrelinha");
+const campoDoAlinhamento = elemento("campo-alinhamento");
+const campoDoItalico = elemento<HTMLInputElement>("campo-italico");
+const campoDoNegrito = elemento<HTMLInputElement>("campo-negrito");
+const erroDoEstilo = elemento("erro-do-estilo");
+const estadoDoEstilo = elemento("estado-do-estilo");
+const dicaDoEstilo = elemento("dica-do-estilo");
+
+/** Os campos de medida: o do número e onde aparece a unidade. */
+const MEDIDAS: { campo: "tamanho" | "recuo-primeira-linha" | "espaco-antes" | "espaco-depois"; numero: HTMLInputElement; unidade: HTMLElement }[] = [
+  { campo: "tamanho", numero: elemento<HTMLInputElement>("campo-tamanho"), unidade: elemento("unidade-tamanho") },
+  { campo: "recuo-primeira-linha", numero: elemento<HTMLInputElement>("campo-recuo"), unidade: elemento("unidade-recuo") },
+  { campo: "espaco-antes", numero: elemento<HTMLInputElement>("campo-antes"), unidade: elemento("unidade-antes") },
+  { campo: "espaco-depois", numero: elemento<HTMLInputElement>("campo-depois"), unidade: elemento("unidade-depois") },
+];
+
+/** O estilo como está no painel; `null` com o painel fechado. */
+let estiloNoPainel: EstiloNoPainel | null = null;
+/** O parágrafo que o painel mostra: `null` é o texto do livro. */
+let paragrafoNoPainel: string | null = null;
+const TEXTO_DO_LIVRO = "Texto do livro";
+
+/** Mostra no formulário o parágrafo escolhido. */
+function preencherPainel(): void {
+  if (estiloNoPainel === null) return;
+  // Em ordem de nome, como ficam no arquivo e na próxima abertura do painel.
+  const nomes = Object.keys(estiloNoPainel.estilos).sort((um, outro) => um.localeCompare(outro, "pt"));
+  estiloEscolhidoNoPainel.replaceChildren(
+    new Option(TEXTO_DO_LIVRO, ""),
+    ...nomes.map((nome) => new Option(nome, nome)),
+  );
+  estiloEscolhidoNoPainel.value = paragrafoNoPainel ?? "";
+  botaoApagarEstilo.disabled = paragrafoNoPainel === null;
+  const campos = camposDe(estiloNoPainel, paragrafoNoPainel);
+  campoDaFonte.value = campos.fonte;
+  for (const { campo, numero, unidade } of MEDIDAS) {
+    const medida = partirMedida(campos[campo]);
+    numero.value = medida === null ? "" : String(medida.numero);
+    unidade.textContent = medida?.unidade ?? "";
+  }
+  campoDaEntrelinha.value = String(campos.entrelinha);
+  for (const botao of campoDoAlinhamento.querySelectorAll("button")) {
+    botao.setAttribute("aria-checked", String(botao.dataset.alinhamento === campos.alinhamento));
+  }
+  campoDoItalico.checked = campos.italico;
+  campoDoNegrito.checked = campos.negrito;
+  for (const marcado of painelDoEstilo.querySelectorAll<HTMLElement>("[data-campo]")) {
+    const campo = marcado.dataset.campo as keyof Campos;
+    marcado.classList.toggle("herdado", herdado(estiloNoPainel, paragrafoNoPainel, campo));
+  }
+  dicaDoEstilo.textContent =
+    paragrafoNoPainel === null
+      ? "Vale para todo o texto do livro, na tela e no .docx."
+      : `Para usar num trecho, escreva antes dele ::: {custom-style="${paragrafoNoPainel}"} e, depois dele, ::: numa linha só. O que este estilo não muda, ele herda do texto do livro.`;
+}
+
+/** Uma gravação por vez, e só a última mudança espera a anterior acabar. */
+const ESPERA_PARA_GRAVAR_O_ESTILO_MS = 350;
+let gravacaoDoEstiloAgendada: number | undefined;
+let gravacaoDoEstilo: Promise<void> = Promise.resolve();
+
+async function gravarEstilo(estilo: EstiloNoPainel): Promise<void> {
+  try {
+    const livro = await invoke<LivroAberto>("salvar_estilo", { painel: estilo });
+    aplicarEstilo(livro);
+    editor.view.requestMeasure();
+    if (estiloNoPainel !== null) estiloNoPainel = { ...estiloNoPainel, existe: true };
+    avisoSemEstilo?.remove();
+    avisoSemEstilo = null;
+    erroDoEstilo.hidden = true;
+    estadoDoEstilo.textContent = "Salvo no estilo.yaml do livro.";
+    registrar("estilo salvo pelo painel");
+  } catch (motivo) {
+    // O que está no formulário fica: o autor corrige o campo e a gravação tenta de novo.
+    erroDoEstilo.textContent = comoErro(motivo).mensagem;
+    erroDoEstilo.hidden = false;
+    estadoDoEstilo.textContent = "";
+    registrar("estilo não salvo pelo painel");
+  }
+}
+
+/** Grava já o que está agendado, com o estilo como está agora no painel. */
+function gravarEstiloAgendado(): void {
+  if (gravacaoDoEstiloAgendada === undefined) return;
+  window.clearTimeout(gravacaoDoEstiloAgendada);
+  gravacaoDoEstiloAgendada = undefined;
+  const estilo = estiloNoPainel;
+  if (estilo !== null) gravacaoDoEstilo = gravacaoDoEstilo.then(() => gravarEstilo(estilo));
+}
+
+function agendarGravacaoDoEstilo(): void {
+  estadoDoEstilo.textContent = "Salvando…";
+  window.clearTimeout(gravacaoDoEstiloAgendada);
+  gravacaoDoEstiloAgendada = window.setTimeout(gravarEstiloAgendado, ESPERA_PARA_GRAVAR_O_ESTILO_MS);
+}
+
+function mudarCampoDoEstilo<K extends keyof Campos>(campo: K, valor: Campos[K]): void {
+  if (estiloNoPainel === null) return;
+  estiloNoPainel = comCampo(estiloNoPainel, paragrafoNoPainel, campo, valor);
+  preencherPainel();
+  agendarGravacaoDoEstilo();
+}
+
+async function abrirPainelDoEstilo(): Promise<void> {
+  try {
+    estiloNoPainel = await invoke<EstiloNoPainel>("estilo_para_editar");
+  } catch (motivo) {
+    avisar(comoErro(motivo).mensagem, "erro");
+    return;
+  }
+  paragrafoNoPainel = null;
+  erroDoEstilo.hidden = true;
+  estadoDoEstilo.textContent = estiloNoPainel.existe
+    ? ""
+    : "Este livro ainda não tem estilo: estes são os valores do modelo. A primeira mudança cria o estilo.yaml do livro.";
+  elemento("fontes-sugeridas").replaceChildren(
+    ...FONTES_SUGERIDAS.filter(fonteInstalada).map((fonte) => new Option(fonte, fonte)),
+  );
+  painelDoEstilo.hidden = false;
+  botaoDoEstilo.setAttribute("aria-pressed", "true");
+  preencherPainel();
+}
+
+function fecharPainelDoEstilo(): void {
+  // A mudança feita um instante antes de fechar não se perde.
+  gravarEstiloAgendado();
+  painelDoEstilo.hidden = true;
+  botaoDoEstilo.setAttribute("aria-pressed", "false");
+  campoDoNomeDoEstilo.hidden = true;
+  estiloNoPainel = null;
+}
+
+botaoDoEstilo.addEventListener("click", () => {
+  if (painelDoEstilo.hidden) void abrirPainelDoEstilo();
+  else fecharPainelDoEstilo();
+});
+elemento("fechar-o-painel").addEventListener("click", fecharPainelDoEstilo);
+estiloEscolhidoNoPainel.addEventListener("change", () => {
+  paragrafoNoPainel = estiloEscolhidoNoPainel.value === "" ? null : estiloEscolhidoNoPainel.value;
+  preencherPainel();
+});
+// A fonte só vale quando o autor termina de escrever o nome (Enter, sair do
+// campo ou escolher da lista): gravar a cada letra criaria fontes que não existem.
+campoDaFonte.addEventListener("change", () => {
+  const fonte = campoDaFonte.value.trim();
+  if (fonte !== "") mudarCampoDoEstilo("fonte", fonte);
+});
+for (const { campo, numero, unidade } of MEDIDAS) {
+  numero.addEventListener("input", () => {
+    // Campo vazio no meio da digitação: espera o número.
+    if (Number.isNaN(numero.valueAsNumber) || numero.valueAsNumber < 0) return;
+    mudarCampoDoEstilo(campo, juntarMedida(numero.valueAsNumber, unidade.textContent || (campo === "recuo-primeira-linha" ? "cm" : "pt")));
+  });
+}
+campoDaEntrelinha.addEventListener("input", () => {
+  if (Number.isNaN(campoDaEntrelinha.valueAsNumber) || campoDaEntrelinha.valueAsNumber <= 0) return;
+  mudarCampoDoEstilo("entrelinha", campoDaEntrelinha.valueAsNumber);
+});
+campoDoAlinhamento.addEventListener("click", (evento) => {
+  const botao = evento.target instanceof Element ? evento.target.closest("button") : null;
+  const alinhamento = botao?.dataset.alinhamento;
+  if (alinhamento !== undefined) mudarCampoDoEstilo("alinhamento", alinhamento as Alinhamento);
+});
+campoDoItalico.addEventListener("change", () => mudarCampoDoEstilo("italico", campoDoItalico.checked));
+campoDoNegrito.addEventListener("change", () => mudarCampoDoEstilo("negrito", campoDoNegrito.checked));
+
+botaoNovoEstilo.addEventListener("click", () => {
+  campoDoNomeDoEstilo.value = "";
+  campoDoNomeDoEstilo.hidden = false;
+  campoDoNomeDoEstilo.focus();
+});
+campoDoNomeDoEstilo.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape") {
+    campoDoNomeDoEstilo.hidden = true;
+    return;
+  }
+  if (evento.key !== "Enter" || estiloNoPainel === null) return;
+  const nome = nomeDeEstiloNovo(estiloNoPainel, campoDoNomeDoEstilo.value);
+  if (nome === null) {
+    erroDoEstilo.textContent = `O nome do estilo novo não pode ser vazio nem repetir um que já existe; recebi "${campoDoNomeDoEstilo.value}".`;
+    erroDoEstilo.hidden = false;
+    return;
+  }
+  campoDoNomeDoEstilo.hidden = true;
+  estiloNoPainel = comEstiloNovo(estiloNoPainel, nome);
+  paragrafoNoPainel = nome;
+  preencherPainel();
+  agendarGravacaoDoEstilo();
+});
+botaoApagarEstilo.addEventListener("click", () => {
+  if (estiloNoPainel === null || paragrafoNoPainel === null) return;
+  estiloNoPainel = semEstilo(estiloNoPainel, paragrafoNoPainel);
+  paragrafoNoPainel = null;
+  preencherPainel();
+  agendarGravacaoDoEstilo();
+});
+
 // ---- Capítulo novo ----
 
 function fecharCampoDoCapituloNovo(): void {
@@ -566,10 +795,11 @@ async function criarEstilo(): Promise<void> {
     // A altura das linhas mudou com o CSS novo.
     editor.view.requestMeasure();
     avisar(
-      `Criei o estilo.yaml em ${livro.pasta}. Para trocar a fonte, o tamanho, a entrelinha ou o recuo, abra esse arquivo num editor de texto: cada linha tem um comentário dizendo o que faz. Depois de mexer nele, feche e abra o md Novel para ver a mudança.`,
+      'Criei o estilo do livro a partir do modelo. Ajuste a fonte, o tamanho, a entrelinha e o recuo no painel "Estilo", ao lado: cada mudança aparece na hora no texto.',
       "feito",
     );
     registrar(`estilo criado: css=${livro.css !== null}`);
+    await abrirPainelDoEstilo();
   } catch (motivo) {
     avisar(comoErro(motivo).mensagem, "erro");
   } finally {
@@ -583,6 +813,8 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
   pastaDoLivro = livro.pasta;
   hoje = null;
   fecharCampoDoCapituloNovo();
+  // O painel é do livro que estava aberto.
+  fecharPainelDoEstilo();
   nomeDoLivro.textContent = livro.nome;
   nomeDoLivro.title = livro.pasta;
   avisos.replaceChildren();
@@ -679,6 +911,7 @@ async function diagnosticar(): Promise<void> {
     if (roteiro.sessao) await roteiroDaSessao();
     if (roteiro.capitulo_novo) await roteiroDoCapituloNovo();
     if (roteiro.corretor) await roteiroDoCorretor();
+    if (roteiro.painel_de_estilo) await roteiroDoPainelDeEstilo();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -702,6 +935,71 @@ async function diagnosticar(): Promise<void> {
     // De volta ao começo do capítulo, que é o que a captura do teste mostra.
     editor.view.scrollDOM.scrollTop = 0;
   }
+}
+
+/** Muda o estilo pelo painel, como o autor faria com o mouse e o teclado, e
+ *  registra o que o texto mostra depois de cada gravação. */
+async function roteiroDoPainelDeEstilo(): Promise<void> {
+  const espera = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  /** A gravação agendada e a em curso acabaram. */
+  const gravado = async () => {
+    await espera(ESPERA_PARA_GRAVAR_O_ESTILO_MS * 2);
+    await gravacaoDoEstilo;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  };
+  const linhaDoCorpo = () => {
+    const linha = editor.view.contentDOM.querySelector(
+      ".cm-line:not([data-md-novel-estilo]):not(.md-novel-titulo):not(.md-novel-marcador):not(.md-novel-vazia)",
+    );
+    if (linha === null) return "ausente";
+    const estilo = getComputedStyle(linha);
+    return `tamanho=${estilo.fontSize} alinhamento=${estilo.textAlign}`;
+  };
+  const opcoes = () => [...estiloEscolhidoNoPainel.options].map((opcao) => opcao.textContent).join("|");
+  const numeroDe = (campo: string) => MEDIDAS.find((medida) => medida.campo === campo)?.numero;
+  const escolher = (nome: string) => {
+    estiloEscolhidoNoPainel.value = nome;
+    estiloEscolhidoNoPainel.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  editor.view.scrollDOM.scrollTop = 0;
+  botaoDoEstilo.click();
+  for (let vez = 0; vez < 100 && painelDoEstilo.hidden; vez += 1) await espera(50);
+  const tamanho = numeroDe("tamanho");
+  registrar(
+    `painel: aberto=${!painelDoEstilo.hidden} fonte="${campoDaFonte.value}" tamanho=${tamanho?.value}${elemento("unidade-tamanho").textContent} opções=${opcoes()} antes[${linhaDoCorpo()}]`,
+  );
+  // O texto do livro: tamanho 14 e alinhado à esquerda.
+  if (tamanho !== undefined) {
+    tamanho.value = "14";
+    tamanho.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  campoDoAlinhamento.querySelector<HTMLButtonElement>('[data-alinhamento="esquerda"]')?.click();
+  await gravado();
+  registrar(`painel: texto do livro depois[${linhaDoCorpo()}] estado="${estadoDoEstilo.textContent}"`);
+  // Um estilo nomeado herda o tamanho novo, e mostra isso.
+  escolher("Epígrafe");
+  const marcaDoTamanho = painelDoEstilo.querySelector('[data-campo="tamanho"]');
+  registrar(
+    `painel: epígrafe tamanho=${tamanho?.value} herdado=${marcaDoTamanho?.classList.contains("herdado")} itálico=${campoDoItalico.checked}`,
+  );
+  // Estilo novo, em negrito; e um dos que existiam, apagado.
+  botaoNovoEstilo.click();
+  campoDoNomeDoEstilo.value = "Destaque";
+  campoDoNomeDoEstilo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  campoDoNegrito.click();
+  // Cada gravação termina antes do passo seguinte: senão a de um passo
+  // levaria junto a mudança do outro, e o teste não saberia qual gravou.
+  await gravado();
+  escolher("Separador");
+  botaoApagarEstilo.click();
+  await gravado();
+  // Um valor que o Word não guarda: o erro aparece no painel e nada é gravado.
+  if (tamanho !== undefined) {
+    tamanho.value = "5000";
+    tamanho.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  await gravado();
+  registrar(`painel: opções=${opcoes()} erro=${erroDoEstilo.hidden ? "nenhum" : erroDoEstilo.textContent}`);
 }
 
 /** Digita duas palavras erradas pelo caminho de entrada do navegador, que é
@@ -876,6 +1174,7 @@ interface RoteiroDeTeste {
   sessao: boolean;
   capitulo_novo: boolean;
   corretor: boolean;
+  painel_de_estilo: boolean;
 }
 
 /** As contagens como estão escritas na tela. */

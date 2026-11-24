@@ -148,6 +148,9 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   font-variant-numeric: tabular-nums;
 }
 #status span:empty { display: none; }
+/* Com o painel de estilo aberto a barra aperta: nada quebra em duas linhas. */
+#status > * { white-space: nowrap; }
+#status { overflow: hidden; }
 #estado { margin-left: auto; }
 #estado.erro { color: var(--erro-tinta); font-weight: 600; }
 #zoom, #aspas, #hoje { border: 0; background: none; padding: 0 5px; border-radius: 4px; cursor: pointer; }
@@ -237,9 +240,45 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
    subir até o meio da tela. Quem rola é o `editor.ts`. */
 :root[data-maquina="ligada"] #folha .cm-content { padding-bottom: 50vh; }
 
+/* ---- Painel de estilo: o formulário do estilo.yaml ---- */
+
+#painel-do-estilo {
+  width: 272px; flex: none; display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 14px; overflow: auto;
+  border-left: 1px solid var(--borda); background: var(--lateral); font-size: 13px;
+}
+#painel-do-estilo[hidden], #painel-do-estilo [hidden] { display: none; }
+#painel-do-estilo header { display: flex; align-items: center; justify-content: space-between; }
+#painel-do-estilo h2 { margin: 0; font-size: 15px; font-weight: 600; }
+#painel-do-estilo button, #painel-do-estilo input, #painel-do-estilo select {
+  font: inherit; color: var(--tinta); background: var(--papel);
+  border: 1px solid var(--borda); border-radius: 5px; padding: 3px 7px; min-width: 0;
+}
+#painel-do-estilo button { background: transparent; cursor: pointer; }
+#painel-do-estilo button:not(:disabled):hover { background: var(--realce); }
+#fechar-o-painel { border: 0; font-size: 18px; line-height: 1; padding: 0 6px; }
+#painel-do-estilo .campo { display: flex; flex-direction: column; gap: 3px; }
+#painel-do-estilo .campo > label, #painel-do-estilo .rotulo-do-campo { color: var(--tinta-fraca); font-size: 12px; }
+#painel-do-estilo .medida { display: flex; align-items: center; gap: 6px; color: var(--tinta-fraca); }
+#painel-do-estilo .medida input { width: 84px; }
+#painel-do-estilo .acoes-do-estilo, #campo-alinhamento { display: flex; gap: 5px; }
+#painel-do-estilo .acoes-do-estilo button, #campo-alinhamento button { flex: 1; }
+#campo-alinhamento button[aria-checked="true"] { background: var(--destaque-fundo); border-color: var(--destaque); }
+#painel-do-estilo .marcas { flex-direction: row; gap: 16px; }
+#painel-do-estilo .marcas label { display: flex; align-items: center; gap: 5px; }
+#painel-do-estilo .marcas input { padding: 0; }
+/* Num estilo nomeado, o campo que ele não troca vale o do texto do livro. */
+#painel-do-estilo [data-campo].herdado > label::after,
+#painel-do-estilo [data-campo].herdado > .rotulo-do-campo::after,
+#painel-do-estilo label[data-campo].herdado::after { content: " · do texto do livro"; color: var(--tinta-apagada); }
+#erro-do-estilo { margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--erro); overflow-wrap: anywhere; }
+#estado-do-estilo, #dica-do-estilo { margin: 0; color: var(--tinta-fraca); font-size: 12px; overflow-wrap: anywhere; }
+#estado-do-estilo:empty { display: none; }
+
 /* ---- Modo foco: só a folha ---- */
 
 :root[data-foco="ligado"] #lateral,
+:root[data-foco="ligado"] #painel-do-estilo,
 :root[data-foco="ligado"] #barra,
 :root[data-foco="ligado"] #status { display: none; }
 :root[data-foco="ligado"] body { background: var(--papel); }

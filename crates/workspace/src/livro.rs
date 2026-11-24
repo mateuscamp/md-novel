@@ -176,6 +176,38 @@ impl Livro {
         saida.publicar_sem_sobrescrever()
     }
 
+    /// Grava o `estilo.yaml` que o painel de estilo montou. `lido` é o texto
+    /// que o painel tinha em mãos (`None` se o arquivo não existia): se o que
+    /// está no disco agora é outra coisa, o arquivo mudou por fora e nada é
+    /// gravado, como num capítulo (ADR 0003).
+    pub fn gravar_estilo(&self, novo: &str, lido: Option<&str>) -> Result<(), ErroWorkspace> {
+        let caminho = self.caminho_do_estilo();
+        let mudou = || ErroWorkspace::EstiloMudouPorFora {
+            caminho: caminho.clone(),
+        };
+        let atual = self.ler_estilo()?;
+        if atual.as_deref() != lido {
+            return Err(mudou());
+        }
+        if atual.as_deref() == Some(novo) {
+            return Ok(());
+        }
+        let mut saida = SaidaPendente::preparar(&caminho, "yaml")?;
+        saida.escrever(novo.as_bytes())?;
+        if atual.is_some() {
+            return saida.publicar();
+        }
+        // Não existia quando o painel leu: se apareceu de lá para cá, a
+        // troca que recusa sobrescrever é quem nota.
+        saida.publicar_sem_sobrescrever().map_err(|erro| {
+            if matches!(erro, ErroWorkspace::JaExiste { .. }) {
+                mudou()
+            } else {
+                erro
+            }
+        })
+    }
+
     /// Cria um capítulo vazio com o nome que o autor deu e devolve o nome do
     /// arquivo (com `.md`). O nome é o único dado que vem de fora da lista
     /// do livro, e por isso é conferido aqui: precisa ser um nome de arquivo
