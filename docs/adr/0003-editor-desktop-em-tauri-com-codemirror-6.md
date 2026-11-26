@@ -542,6 +542,43 @@ viu o `&nbsp;` escrito na tela e escolheu vê-lo como no Word.
   Markdown cru. Ele esconderia também `#`, `*` e `:::`, que o autor quer ver,
   e cada coisa escondida é mais um caso para o cursor e para os testes.
 
+## Buscar no livro inteiro (2026-11-26)
+
+Com o livro separado em 29 capítulos, o autor pediu a busca em todos: "às
+vezes não sei em qual capítulo está". As escolhas são dele:
+
+- **Só buscar.** Substituir em todos os capítulos ficou de fora: gravaria em
+  arquivos que não estão na tela, e o Ctrl+Z não desfaria neles. Para
+  trocar, o Ctrl+H do capítulo aberto continua.
+- **Sem diferenciar maiúscula nem acento:** "coracao" acha "Coração". A
+  comparação é do `workspace` (`busca.rs`), sem dependência: minúsculas
+  pelo Unicode, as letras acentuadas do Latin-1 e o acento gravado à parte
+  da letra. Uma biblioteca de normalização resolveria o resto do Unicode;
+  o que falta (letras acentuadas fora do Latin-1, como "ő") não é do
+  português, e a dependência não entrou por isso.
+- **Ctrl+Shift+F, ou a lupa ao lado do nome do livro**, troca a lista de
+  capítulos pelos achados, agrupados por capítulo na ordem do livro, cada
+  um com o trecho da linha em volta. Clicar abre o capítulo com o trecho
+  selecionado. Esc devolve os capítulos. O Ctrl+F sozinho continua sendo a
+  busca dentro do capítulo.
+- **O Rust lê os capítulos do disco**, então o que está digitado é salvo
+  antes de buscar. Só lê: nada é gravado, e a página manda só o termo.
+- **A posição do achado é a do texto como o editor o recebe** (LF, sem
+  marca de ordem de bytes), em unidades de UTF-16. Se o capítulo mudou
+  depois da busca, o trecho selecionado não bate com o achado: o app avisa
+  e busca de novo, em vez de selecionar o lugar errado.
+- **Até 500 achados.** Além disso a lista para e diz que parou: uma letra
+  só, num romance, daria dezenas de milhares.
+- **Termo de até 200 letras.** A comparação é letra a letra, sem índice:
+  num texto repetitivo de 1 MiB, um termo colado de 20 mil letras custou
+  4 s por busca, e de 200, 56 ms. O campo não aceita mais, e o Rust recusa
+  com o tamanho recebido.
+- **Custo aceito:** a busca relê o livro inteiro a cada termo. Medido no
+  "O dom da pele" (29 capítulos, 36 mil palavras), sem depuração: de 3 a
+  12 ms por busca, e menos de 1 ms quando para nos 500. Não há índice, e
+  não precisa. Capítulo que não dá para ler como capítulo fica de fora sem
+  aviso na lista: o motivo aparece quando o autor o abre.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -569,6 +606,9 @@ viu o `&nbsp;` escrito na tela e escolheu vê-lo como no Word.
 | Regras do formulário | `app/src/painel.test.ts` | `make check` | o estilo nomeado não herda do texto do livro, uma propriedade do estilo fica sem campo no painel, ou uma medida não vai e volta |
 | O painel na janela de verdade | `app/teste_funcional.py`, passada 13 | à mão, fora do CI | a mudança no painel não aparece no texto na hora, não chega ao `estilo.yaml`, o estilo nomeado não herda, criar ou apagar estilo falha, ou o valor inválido é gravado |
 | Linha separadora e Enter de parágrafo | `app/src/blocos.test.ts` e `app/src/paragrafo.test.ts` | `make check` | uma linha em branco de bloco de código, do fim do capítulo ou repetida é escondida, ou o Enter abre linha em branco em lista, citação, tabela ou linha `:::` |
+| Buscar no livro acha o que devia | `crates/workspace/tests/busca.rs` e os testes `buscar_*` de `sessao.rs` | `make check` | maiúscula ou acento impede o achado, a posição não é a do editor (UTF-16, LF), o acento solto fica fora da seleção, a busca grava algo, passa de 500 sem dizer, aceita termo de mais de 200 letras, ou lê arquivo que não é capítulo |
+| A busca na janela | `app/src/achados.test.ts`, `app/src/conforto.test.ts` (Ctrl+Shift+F) | `make check` | o resumo conta errado, a busca cortada não avisa, Ctrl+F sozinho abre a busca no livro, ou a tecla vale no meio de um acento |
+| Buscar no livro na janela de verdade | `app/teste_funcional.py`, passada 16 | à mão, fora do CI | Ctrl+Shift+F não abre o campo, o termo sem acento não acha nos dois capítulos o que a conta do teste acha, clicar num achado não abre o outro capítulo com o trecho selecionado, Esc não devolve os capítulos, ou a busca muda o disco |
 | A quebra de cena | `app/src/blocos.test.ts` (`quebraDeCena`) e `app/teste_funcional.py`, passada 14 | `make check`; a passada, à mão | um `&nbsp;` colado, com texto, em código ou indentado é escondido, ou o sozinho aparece escrito com o cursor longe, some sem ocupar a linha, ou não aparece com o cursor nele |
 | Converter sinais | `app/src/tipografia.test.ts` (`converter`, `ofertaDeConversao`) | `make check` | um sinal é trocado em código, linha `:::`, tabela, quebra de cena, cabeçalho YAML, comentário ou link, ou as trocas não refazem o texto |
 | Parágrafos na janela de verdade | `app/teste_funcional.py`, passada 14 | à mão, fora do CI | a linha em branco entre parágrafos ocupa espaço, Enter não grava a linha em branco, Backspace não junta os parágrafos, converter e desfazer não dão o texto esperado, ou o capítulo com `\\--` abre sem a oferta de converter |

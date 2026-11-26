@@ -65,6 +65,38 @@ pub struct CapituloCriado {
     pub livro: LivroAberto,
 }
 
+/// O maior termo que a busca no livro aceita, em letras. A comparação é
+/// letra a letra: num texto repetitivo, um termo colado de 20 mil letras
+/// custou 4 s por busca; com 200, 56 ms (medido em 1 MiB). Ninguém procura
+/// por mais do que uma frase.
+pub const MAIOR_TERMO_DE_BUSCA: usize = 200;
+
+/// A busca no livro como a lateral a mostra: os capítulos com achado, na
+/// ordem do livro, e cada achado com a posição que o editor seleciona.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BuscaNoLivro {
+    pub capitulos: Vec<CapituloComAchados>,
+    pub total: usize,
+    /// Havia mais achados do que a lista mostra.
+    pub cortada: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CapituloComAchados {
+    pub nome: String,
+    pub titulo: Option<String>,
+    pub achados: Vec<AchadoNaLista>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AchadoNaLista {
+    pub inicio: usize,
+    pub fim: usize,
+    pub antes: String,
+    pub trecho: String,
+    pub depois: String,
+}
+
 /// O livro renomeado, e o caminho que ele tinha: o app troca o que lembra
 /// daquela pasta (a lista de livros, onde o autor parou) para a nova.
 #[derive(Debug, PartialEq, Serialize)]
@@ -245,6 +277,69 @@ impl Sessao {
     pub fn criar_livro(&mut self, onde: &Path, nome: &str) -> Result<LivroAberto, ErroDeComando> {
         let criado = workspace::criar_livro(onde, nome)?;
         self.abrir_pasta(criado.pasta())
+    }
+
+    /// O livro aberto, para a busca ler os capítulos com a sessão livre:
+    /// como a exportação, ela não segura quem quer salvar.
+    pub fn livro_para_buscar(&self) -> Result<Livro, ErroDeComando> {
+        self.livro
+            .clone()
+            .ok_or_else(|| erro("abra a pasta do livro antes de buscar nele"))
+    }
+
+    /// Procura o termo em todos os capítulos de `livro`, no disco: a página
+    /// salva antes o que está digitado. Só lê, e não precisa da sessão.
+    pub fn buscar(livro: &Livro, termo: &str) -> Result<BuscaNoLivro, ErroDeComando> {
+        let letras = termo.chars().count();
+        if letras > MAIOR_TERMO_DE_BUSCA {
+            return Err(erro(&format!(
+                "o termo de busca tem {letras} letras; o máximo é {MAIOR_TERMO_DE_BUSCA}. \
+                 Procure por um trecho menor"
+            )));
+        }
+        // Sem `..`: campo novo na busca quebra a compilação aqui.
+        let workspace::Busca { capitulos, cortada } = livro.buscar(termo)?;
+        let capitulos: Vec<CapituloComAchados> = capitulos
+            .into_iter()
+            .map(|capitulo| {
+                let workspace::AchadosNoCapitulo {
+                    nome,
+                    titulo,
+                    achados,
+                } = capitulo;
+                CapituloComAchados {
+                    nome,
+                    titulo,
+                    achados: achados
+                        .into_iter()
+                        .map(|achado| {
+                            let workspace::Achado {
+                                inicio,
+                                fim,
+                                antes,
+                                trecho,
+                                depois,
+                            } = achado;
+                            AchadoNaLista {
+                                inicio,
+                                fim,
+                                antes,
+                                trecho,
+                                depois,
+                            }
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        Ok(BuscaNoLivro {
+            total: capitulos
+                .iter()
+                .map(|capitulo| capitulo.achados.len())
+                .sum(),
+            capitulos,
+            cortada,
+        })
     }
 
     /// A pasta do livro aberto, se há um.
@@ -984,5 +1079,68 @@ estilos:
             let erro = resultado.expect_err("sem livro");
             assert!(erro.mensagem.contains("abra"), "{}", erro.mensagem);
         }
+    }
+
+    // Buscar no livro (ADR 0003).
+
+    #[test]
+    fn buscar_no_livro_devolve_os_capitulos_com_achado_e_o_total() {
+        let pasta = pasta_com(&[
+            ("01.md", "# Um\n\nA cigana e a Cigana.\n"),
+            ("02.md", "# Dois\n\nNada.\n"),
+            ("03.md", "Sem título, mas com cigana.\n"),
+        ]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+        let livro = sessao.livro_para_buscar().expect("livro");
+        let busca = Sessao::buscar(&livro, "CIGANA").expect("buscar");
+        assert_eq!(busca.total, 3);
+        assert!(!busca.cortada);
+        let resumo: Vec<(&str, Option<&str>, usize)> = busca
+            .capitulos
+            .iter()
+            .map(|capitulo| {
+                (
+                    capitulo.nome.as_str(),
+                    capitulo.titulo.as_deref(),
+                    capitulo.achados.len(),
+                )
+            })
+            .collect();
+        assert_eq!(resumo, [("01.md", Some("Um"), 2), ("03.md", None, 1)]);
+        let primeiro = &busca.capitulos[0].achados[0];
+        assert_eq!(
+            (
+                primeiro.inicio,
+                primeiro.fim,
+                primeiro.antes.as_str(),
+                primeiro.trecho.as_str()
+            ),
+            (8, 14, "A ", "cigana")
+        );
+    }
+
+    #[test]
+    fn buscar_sem_livro_aberto_e_erro() {
+        let erro = Sessao::default()
+            .livro_para_buscar()
+            .expect_err("sem livro");
+        assert!(erro.mensagem.contains("abra"), "{}", erro.mensagem);
+    }
+
+    #[test]
+    fn termo_de_busca_comprido_demais_e_recusado_com_o_tamanho_recebido() {
+        let pasta = pasta_com(&[("01.md", "aaaa")]);
+        let mut sessao = Sessao::default();
+        sessao.abrir_pasta(pasta.path()).expect("abrir");
+        let livro = sessao.livro_para_buscar().expect("livro");
+        // Duzentas letras cabem, com acento e tudo; duzentas e uma, não.
+        assert!(Sessao::buscar(&livro, &"é".repeat(200)).is_ok());
+        let erro = Sessao::buscar(&livro, &"é".repeat(201)).expect_err("comprido demais");
+        assert!(
+            erro.mensagem.contains("201") && erro.mensagem.contains("200"),
+            "{}",
+            erro.mensagem
+        );
     }
 }

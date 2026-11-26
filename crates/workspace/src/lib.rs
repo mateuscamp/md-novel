@@ -4,11 +4,13 @@
 //! Este crate não depende de tauri nem abre processo: o app e a linha de
 //! comando são adaptadores em cima dele.
 
+mod busca;
 mod erro;
 mod livro;
 mod saida;
 mod texto;
 
+pub use busca::{Achado, AchadosNoCapitulo, Busca, MAXIMO_DE_ACHADOS, buscar_no_texto};
 pub use erro::ErroWorkspace;
 pub use livro::{Capitulo, Gravacao, Livro, ResumoDoCapitulo, criar_livro, nome_de_livro};
 pub use saida::SaidaPendente;

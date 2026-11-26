@@ -380,7 +380,7 @@ impl Livro {
     }
 
     /// Lê um arquivo que já se sabe estar na lista de capítulos.
-    fn ler_da_lista(&self, nome: &str) -> Result<Capitulo, ErroWorkspace> {
+    pub(crate) fn ler_da_lista(&self, nome: &str) -> Result<Capitulo, ErroWorkspace> {
         let caminho = self.pasta.join(nome);
         let mut bytes = Vec::new();
         File::open(&caminho)?

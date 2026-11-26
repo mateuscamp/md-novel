@@ -35,3 +35,7 @@ test("todo botão sem texto tem nome para leitor de tela e dica para o mouse", (
     assert.match(abertura, /title="[^"]+"/, abertura);
   }
 });
+
+test("a lupa da busca no livro nasce escondida: sem livro aberto ela não teria o que buscar", () => {
+  assert.match(botao("abrir-busca").abertura, /\shidden(\s|$)/);
+});

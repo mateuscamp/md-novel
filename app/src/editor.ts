@@ -26,6 +26,8 @@ export interface Editor {
   posicao(): number;
   /** Leva o cursor para `posicao` (ou para o fim, se o texto é mais curto) e mostra a linha. */
   irPara(posicao: number): void;
+  /** Seleciona de `de` até `ate` e leva o trecho para o meio da tela. */
+  selecionar(de: number, ate: number): void;
   /** Quantas trocas o `converterSinais` faria agora, sem fazer nenhuma. */
   sinaisAConverter(): number;
   /** Troca no texto inteiro os hifens duplos por travessão e as aspas retas
@@ -287,6 +289,15 @@ export function criarEditor(
         selection: { anchor: destino },
         effects: EditorView.scrollIntoView(destino, { y: "center" }),
       });
+    },
+    selecionar: (de, ate) => {
+      const fim = view.state.doc.length;
+      const [inicio, final] = [Math.min(de, fim), Math.min(ate, fim)];
+      view.dispatch({
+        selection: { anchor: inicio, head: final },
+        effects: EditorView.scrollIntoView(inicio, { y: "center" }),
+      });
+      view.focus();
     },
     sinaisAConverter: () => converter(view.state.doc.toString()).mudancas.length,
     converterSinais: () => {

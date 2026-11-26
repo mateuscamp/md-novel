@@ -3,6 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { type Achado, achadoAindaVale, resumoDosAchados, termoDaSelecao } from "./achados.ts";
 import { nomeParaEditar, sugestaoDeNome, teclaDeRenomear } from "./capitulo.ts";
 import {
   type AcaoDeZoom,
@@ -863,6 +864,8 @@ async function renomearCapitulo(atual: string, novo: string, fecharCampo: () => 
       }
     }
     mostrarContagem();
+    // Os achados da busca guardam o nome antigo do capítulo.
+    if (buscaAberta()) void buscarNoLivro();
     registrar(`capítulo com nome novo: ${renomeado.nome}`);
   } catch (motivo) {
     avisar(comoErro(motivo).mensagem, "erro");
@@ -1075,6 +1078,154 @@ campoDoLivro.addEventListener("keydown", (evento) => {
   }
 });
 
+// ---- Buscar no livro inteiro (ADR 0003, "Buscar no livro") ----
+
+/** A busca no livro como o Rust a devolve (`BuscaNoLivro`). */
+interface BuscaNoLivro {
+  capitulos: { nome: string; titulo: string | null; achados: Achado[] }[];
+  total: number;
+  cortada: boolean;
+}
+
+const botaoDaBusca = elemento<HTMLButtonElement>("abrir-busca");
+const buscaNoLivro = elemento("busca-no-livro");
+const campoDaBusca = elemento<HTMLInputElement>("termo-da-busca");
+const resumoDaBusca = elemento("resumo-da-busca");
+const listaDeAchados = elemento<HTMLOListElement>("achados");
+
+const buscaAberta = () => !buscaNoLivro.hidden;
+
+/** Digitar não busca a cada letra: busca quando a digitação dá uma folga. */
+const ESPERA_PARA_BUSCAR_MS = 250;
+let buscaAgendada: number | undefined;
+/** Só a resposta da última busca pedida vale. */
+let pedidoDeBusca = 0;
+
+function desenharAchados(busca: BuscaNoLivro): void {
+  resumoDaBusca.textContent = resumoDosAchados(busca.total, busca.capitulos.length, busca.cortada);
+  listaDeAchados.replaceChildren(
+    ...busca.capitulos.map((capitulo) => {
+      const item = document.createElement("li");
+      const cabeca = document.createElement("div");
+      cabeca.className = "capitulo-da-busca";
+      const nome = document.createElement("span");
+      nome.textContent = capitulo.titulo ?? capitulo.nome;
+      nome.title = capitulo.nome;
+      const quantos = document.createElement("span");
+      quantos.className = "palavras";
+      quantos.textContent = numero(capitulo.achados.length);
+      cabeca.append(nome, quantos);
+      const lista = document.createElement("ol");
+      lista.append(
+        ...capitulo.achados.map((achado) => {
+          const linha = document.createElement("li");
+          const botao = document.createElement("button");
+          botao.type = "button";
+          // O texto do manuscrito entra como texto, nunca como HTML.
+          const marca = document.createElement("mark");
+          marca.textContent = achado.trecho;
+          botao.append(achado.antes, marca, achado.depois);
+          botao.addEventListener("click", () => void abrirAchado(capitulo.nome, achado, botao));
+          linha.append(botao);
+          return linha;
+        }),
+      );
+      item.append(cabeca, lista);
+      return item;
+    }),
+  );
+}
+
+/** Procura no livro o que está no campo. O Rust lê os capítulos do disco:
+ *  o que está digitado é salvo antes. */
+async function buscarNoLivro(): Promise<void> {
+  window.clearTimeout(buscaAgendada);
+  pedidoDeBusca += 1;
+  const pedido = pedidoDeBusca;
+  const termo = campoDaBusca.value;
+  if (termo.trim() === "") {
+    resumoDaBusca.textContent = "";
+    listaDeAchados.replaceChildren();
+    return;
+  }
+  // Se sobrou texto fora do disco, a busca vê o que está salvo; o aviso da
+  // gravação continua na tela.
+  await gravador.salvarAgora();
+  try {
+    const busca = await invoke<BuscaNoLivro>("buscar_no_livro", { termo });
+    if (pedido !== pedidoDeBusca || !buscaAberta()) return;
+    desenharAchados(busca);
+    registrar(`busca no livro: ${busca.total} achados em ${busca.capitulos.length} capítulos`);
+  } catch (motivo) {
+    if (pedido === pedidoDeBusca) avisar(comoErro(motivo).mensagem, "erro");
+  }
+}
+
+/** Abre o capítulo do achado e seleciona o trecho. Se o capítulo mudou
+ *  desde a busca, as posições não valem mais: busca de novo. */
+async function abrirAchado(nome: string, achado: Achado, botao: HTMLButtonElement): Promise<void> {
+  await abrirCapitulo(nome);
+  if (capituloAtual !== nome) return;
+  if (!achadoAindaVale(editor.texto(), achado)) {
+    avisar("O capítulo mudou depois da busca. Busquei de novo: escolha o achado na lista atualizada.");
+    void buscarNoLivro();
+    return;
+  }
+  editor.selecionar(achado.inicio, achado.fim);
+  for (const outro of listaDeAchados.querySelectorAll("button")) outro.removeAttribute("aria-current");
+  botao.setAttribute("aria-current", "true");
+  guardarOnde();
+}
+
+function abrirBuscaNoLivro(): void {
+  if (pastaDoLivro === null) return;
+  // A lateral escondida aparece, e o modo foco acaba: é nela que a busca mora.
+  if (focoLigado()) definirFoco(false);
+  if (lateralEscondida()) definirLateral(false);
+  fecharMenuDeLivros();
+  const daSelecao = termoDaSelecao(editor.selecao());
+  if (daSelecao !== "") campoDaBusca.value = daSelecao;
+  buscaNoLivro.hidden = false;
+  listaDeCapitulos.hidden = true;
+  listaDeAchados.hidden = false;
+  botaoDaBusca.setAttribute("aria-pressed", "true");
+  campoDaBusca.focus();
+  campoDaBusca.select();
+  void buscarNoLivro();
+}
+
+function fecharBuscaNoLivro(): void {
+  window.clearTimeout(buscaAgendada);
+  pedidoDeBusca += 1;
+  buscaNoLivro.hidden = true;
+  listaDeAchados.hidden = true;
+  listaDeCapitulos.hidden = false;
+  botaoDaBusca.setAttribute("aria-pressed", "false");
+}
+
+botaoDaBusca.addEventListener("click", () => {
+  if (buscaAberta()) fecharBuscaNoLivro();
+  else abrirBuscaNoLivro();
+});
+elemento("fechar-a-busca").addEventListener("click", () => {
+  fecharBuscaNoLivro();
+  if (capituloAtual !== null) editor.focar();
+});
+campoDaBusca.addEventListener("input", () => {
+  window.clearTimeout(buscaAgendada);
+  buscaAgendada = window.setTimeout(() => void buscarNoLivro(), ESPERA_PARA_BUSCAR_MS);
+});
+campoDaBusca.addEventListener("keydown", (evento) => {
+  if (evento.isComposing) return;
+  if (evento.key === "Escape") {
+    evento.stopPropagation();
+    fecharBuscaNoLivro();
+    if (capituloAtual !== null) editor.focar();
+  } else if (evento.key === "Enter") {
+    void buscarNoLivro();
+  }
+});
+
 // O corretor é do sistema: o Rust liga e diz se achou o dicionário. O aviso
 // de dicionário ausente aparece uma vez por abertura do app, não a cada livro.
 const estadoDoCorretor = invoke<EstadoDoCorretor>("estado_do_corretor").catch(
@@ -1119,6 +1270,12 @@ async function mostrarLivro(livro: LivroAberto): Promise<void> {
   fecharCampoDoCapituloNovo();
   fecharMenuDeLivros();
   fecharCampoDoLivro();
+  // Os achados eram do livro que estava aberto. A lupa só existe com livro.
+  botaoDaBusca.hidden = false;
+  fecharBuscaNoLivro();
+  campoDaBusca.value = "";
+  listaDeAchados.replaceChildren();
+  resumoDaBusca.textContent = "";
   // O painel é do livro que estava aberto.
   fecharPainelDoEstilo();
   nomeDoLivro.textContent = livro.nome;
@@ -1240,6 +1397,7 @@ async function diagnosticar(): Promise<void> {
     if (roteiro.painel_de_estilo) await roteiroDoPainelDeEstilo();
     if (roteiro.paragrafos) await roteiroDosParagrafos();
     if (roteiro.livros) await roteiroDosLivros();
+    if (roteiro.busca) await roteiroDaBusca();
     if (roteiro.conforto) await roteiroDoConforto();
     if (roteiro.exportar) await exportar();
     if (roteiro.fechar) {
@@ -1473,6 +1631,45 @@ async function roteiroDoCapituloNovo(): Promise<void> {
   registrar(`capítulo repetido: ${erros} lista=${capitulos.length}`);
 }
 
+/** Abre a busca no livro pela tecla, procura sem acento e em maiúsculas,
+ *  e abre um achado que está em outro capítulo. */
+async function roteiroDaBusca(): Promise<void> {
+  const espera = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  const ate = async (condicao: () => boolean) => {
+    for (let vez = 0; vez < 200 && !condicao(); vez += 1) await espera(50);
+  };
+  // De dentro do modo foco, que esconde a lateral onde a busca mora.
+  definirFoco(true);
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "F", ctrlKey: !NO_MAC, metaKey: NO_MAC, shiftKey: true, bubbles: true, cancelable: true }),
+  );
+  await espera(100);
+  registrar(
+    `busca aberta: campo=${document.activeElement === campoDaBusca} capítulos=${listaDeCapitulos.hidden ? "escondidos" : "à vista"} foco=${focoLigado() ? "ligado" : "desligado"} lateral=${getComputedStyle(elemento("lateral")).display}`,
+  );
+  campoDaBusca.value = "CAPITULO";
+  campoDaBusca.dispatchEvent(new Event("input", { bubbles: true }));
+  await ate(() => listaDeAchados.querySelector("button") !== null);
+  const porCapitulo = [...listaDeAchados.children]
+    .map((item) => `${item.querySelector(".capitulo-da-busca span")?.textContent}=${item.querySelectorAll("button").length}`)
+    .join(",");
+  registrar(`busca: resumo="${resumoDaBusca.textContent}" por-capítulo=${porCapitulo}`);
+  // O último achado está no outro capítulo.
+  const ultimo = [...listaDeAchados.querySelectorAll("button")].at(-1);
+  registrar(`achado na lista: "${ultimo?.textContent ?? "ausente"}" marcado="${ultimo?.querySelector("mark")?.textContent ?? "ausente"}"`);
+  const antes = capituloAtual;
+  ultimo?.click();
+  await ate(() => capituloAtual !== antes && editor.selecao() !== "");
+  registrar(`achado aberto: de=${antes} para=${capituloAtual} seleção="${editor.selecao()}" atual=${ultimo?.getAttribute("aria-current")}`);
+  // Esc no campo fecha a busca, e os capítulos voltam.
+  campoDaBusca.focus();
+  campoDaBusca.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  registrar(`busca fechada: capítulos=${listaDeCapitulos.hidden ? "escondidos" : "à vista"} achados=${listaDeAchados.hidden ? "escondidos" : "à vista"}`);
+  // Aberta de novo para a captura da passada 16.
+  botaoDaBusca.click();
+  await ate(() => listaDeAchados.querySelector("button") !== null);
+}
+
 /** Renomeia o capítulo e o livro, troca de livro, tira um da lista e cria
  *  um livro novo, pelos mesmos cliques e teclas do autor. */
 async function roteiroDosLivros(): Promise<void> {
@@ -1675,6 +1872,7 @@ interface RoteiroDeTeste {
   painel_de_estilo: boolean;
   paragrafos: boolean;
   livros: boolean;
+  busca: boolean;
 }
 
 let roteiroJaRodou = false;
@@ -1822,6 +2020,9 @@ function fazerAtalho(atalho: Atalho): void {
     case "tela-cheia":
       void invoke("alternar_tela_cheia").catch((motivo: unknown) => avisar(comoErro(motivo).mensagem, "erro"));
       break;
+    case "buscar-no-livro":
+      abrirBuscaNoLivro();
+      break;
   }
 }
 
@@ -1915,7 +2116,7 @@ window.addEventListener(
       definirFoco(acao === "alternar" ? !focoLigado() : false);
       return;
     }
-    const atalho = atalhoDaTecla(evento.key, comModificador(evento), evento.isComposing);
+    const atalho = atalhoDaTecla(evento.key, comModificador(evento), evento.isComposing, evento.shiftKey);
     if (atalho === null) return;
     evento.preventDefault();
     evento.stopPropagation();
