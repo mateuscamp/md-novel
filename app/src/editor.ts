@@ -46,6 +46,8 @@ const SEPARADOR = new Separador();
 interface Marcas {
   decoracoes: DecorationSet;
   separadores: RangeSet<Separador>;
+  /** O texto de cada linha de quebra de cena (`&nbsp;`), em ordem. */
+  quebras: { from: number; to: number }[];
 }
 
 /** Uma decoração por linha que precisa de marca: estilo nomeado, título,
@@ -55,6 +57,7 @@ function decorar(estado: EditorState): Marcas {
   const marcas = marcarLinhas(estado.doc.toString().split("\n"));
   const decoracoes = new RangeSetBuilder<Decoration>();
   const separadores = new RangeSetBuilder<Separador>();
+  const quebras: Marcas["quebras"] = [];
   marcas.forEach((marca, indice) => {
     const linha = estado.doc.line(indice + 1);
     const classes: string[] = [];
@@ -68,6 +71,10 @@ function decorar(estado: EditorState): Marcas {
       classes.push("md-novel-separador");
       separadores.add(linha.from - 1, linha.to + 1, SEPARADOR);
     }
+    if (marca.quebraDeCena) {
+      classes.push("md-novel-quebra");
+      quebras.push({ from: linha.from, to: linha.to });
+    }
     if (classes.length === 0 && marca.estilo === null) return;
     decoracoes.add(
       linha.from,
@@ -79,7 +86,7 @@ function decorar(estado: EditorState): Marcas {
       }),
     );
   });
-  return { decoracoes: decoracoes.finish(), separadores: separadores.finish() };
+  return { decoracoes: decoracoes.finish(), separadores: separadores.finish(), quebras };
 }
 
 const marcasDasLinhas = StateField.define<Marcas>({
@@ -89,6 +96,32 @@ const marcasDasLinhas = StateField.define<Marcas>({
     EditorView.decorations.from(campo, (marcas) => marcas.decoracoes),
     EditorView.atomicRanges.of((view) => view.state.field(campo).separadores),
   ],
+});
+
+/** A quebra de cena (ADR 0003): a linha fica em branco na tela, como no
+ *  Word, menos onde está o cursor, para o autor ver o `&nbsp;` e poder
+ *  apagá-lo. O corretor nunca a sublinha. */
+const QUEBRA_ESCONDIDA = Decoration.mark({ class: "md-novel-quebra-escondida", attributes: { spellcheck: "false" } });
+const QUEBRA_A_VISTA = Decoration.mark({ attributes: { spellcheck: "false" } });
+
+function esconderQuebras(estado: EditorState): DecorationSet {
+  const cursores = estado.selection.ranges;
+  const construtor = new RangeSetBuilder<Decoration>();
+  for (const { from, to } of estado.field(marcasDasLinhas).quebras) {
+    // Só a ponta da seleção, onde o cursor pisca: selecionar o capítulo
+    // inteiro não acende todas as quebras do meio.
+    const tocada = cursores.some((cursor) => cursor.head >= from && cursor.head <= to);
+    construtor.add(from, to, tocada ? QUEBRA_A_VISTA : QUEBRA_ESCONDIDA);
+  }
+  return construtor.finish();
+}
+
+/** Refeita quando o texto muda ou o cursor anda; as linhas vêm prontas do
+ *  `marcasDasLinhas`, que precisa vir antes nas extensões. */
+const quebrasNaTela = StateField.define<DecorationSet>({
+  create: esconderQuebras,
+  update: (atual, transacao) => (transacao.docChanged || transacao.selection ? esconderQuebras(transacao.state) : atual),
+  provide: (campo) => EditorView.decorations.from(campo),
 });
 
 // O Markdown à vista: o analisador do Lezer acha a ênfase, os títulos e os
@@ -216,6 +249,7 @@ export function criarEditor(
       return true;
     }),
     marcasDasLinhas,
+    quebrasNaTela,
     markdown.extension,
     syntaxHighlighting(realce),
     // Altura fixa e rolagem própria: sem isto o CodeMirror desenha o

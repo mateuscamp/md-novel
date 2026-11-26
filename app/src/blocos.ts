@@ -17,6 +17,10 @@ export interface MarcaDeLinha {
    *  de uma linha com texto, quando ainda há linha depois dela. O editor a
    *  esconde, para os parágrafos ficarem juntos como no Word. */
   separador: boolean;
+  /** Um parágrafo só com `&nbsp;`: a linha em branco que o Word mostra
+   *  entre duas cenas, e que o Markdown só guarda escrita assim. O editor a
+   *  mostra em branco enquanto o cursor não está nela. */
+  quebraDeCena: boolean;
 }
 
 const FECHAMENTO = /^:{3,}\s*$/;
@@ -24,6 +28,9 @@ const ABERTURA = /^:{3,}\s*(\S.*)$/;
 const ESTILO = /custom-style=(?:"([^"]+)"|'([^']+)')/;
 
 const CERCA_DE_CODIGO = /^ {0,3}(`{3,}|~{3,})/;
+/** Com quatro espaços ou tabulação na frente, o Pandoc lê bloco de código. */
+const QUEBRA_DE_CENA = /^ {0,3}&nbsp;[ \t]*$/;
+const emBranco = (linha: string | undefined) => linha === undefined || linha.trim() === "";
 
 /**
  * Uma marca por linha. Os blocos `:::` do Pandoc aninham: cada abertura
@@ -38,7 +45,14 @@ const CERCA_DE_CODIGO = /^ {0,3}(`{3,}|~{3,})/;
  */
 export function marcarLinhas(linhas: readonly string[]): MarcaDeLinha[] {
   const pilha: (string | null)[] = [];
-  const nada: MarcaDeLinha = { estilo: null, titulo: false, marcador: false, codigo: false, separador: false };
+  const nada: MarcaDeLinha = {
+    estilo: null,
+    titulo: false,
+    marcador: false,
+    codigo: false,
+    separador: false,
+    quebraDeCena: false,
+  };
   const codigo: MarcaDeLinha = { ...nada, codigo: true };
   /** A cerca que abriu o bloco de código em que estamos. */
   let cerca: string | null = null;
@@ -83,11 +97,17 @@ export function marcarLinhas(linhas: readonly string[]): MarcaDeLinha[] {
     if (!titulo) emParagrafo = linha.trim() !== "";
     return { ...nada, estilo, titulo };
   });
-  // A separadora depende da linha de cima e de haver linha embaixo: vai numa
-  // segunda passada, com todas as marcas prontas.
+  // A separadora e a quebra de cena dependem das linhas de cima e de baixo:
+  // vão numa segunda passada, com todas as marcas prontas.
   return marcas.map((marca, indice) => ({
     ...marca,
     separador:
       linhas[indice] === "" && !marca.codigo && indice > 0 && linhas[indice - 1] !== "" && indice < linhas.length - 1,
+    // Parágrafo sozinho: colada num vizinho, o Pandoc a junta ao parágrafo dele.
+    quebraDeCena:
+      QUEBRA_DE_CENA.test(linhas[indice] ?? "") &&
+      !marca.codigo &&
+      emBranco(linhas[indice - 1]) &&
+      emBranco(linhas[indice + 1]),
   }));
 }

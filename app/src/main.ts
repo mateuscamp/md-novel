@@ -1294,6 +1294,31 @@ async function roteiroDosParagrafos(): Promise<void> {
   editor.view.scrollDOM.scrollTop = 0;
   await quadro();
   await quadro();
+  // A quebra de cena (`&nbsp;` sozinho num parágrafo): em branco, com a
+  // altura de uma linha, e à vista quando o cursor entra nela.
+  const comoEstaAQuebra = () => {
+    const linha = editor.view.contentDOM.querySelector(".cm-line.md-novel-quebra");
+    if (linha === null) return "ausente";
+    const escondido = linha.querySelector(".md-novel-quebra-escondida");
+    const texto = escondido === null ? "à-vista" : getComputedStyle(escondido).visibility;
+    return `${texto} altura=${Math.round(linha.getBoundingClientRect().height)}`;
+  };
+  const longeDaQuebra = comoEstaAQuebra();
+  const quebra = editor.view.contentDOM.querySelector(".cm-line.md-novel-quebra");
+  const antesDaQuebra = editor.posicao();
+  if (quebra !== null) editor.view.dispatch({ selection: { anchor: editor.view.posAtDOM(quebra) } });
+  await quadro();
+  await quadro();
+  const comOCursor = comoEstaAQuebra();
+  // Selecionar o capítulo inteiro (Ctrl+A) não acende as quebras do meio.
+  editor.view.dispatch({ selection: { anchor: 0, head: editor.view.state.doc.length } });
+  await quadro();
+  await quadro();
+  registrar(`quebra de cena: longe=${longeDaQuebra} com-o-cursor=${comOCursor} tudo-selecionado=${comoEstaAQuebra()}`);
+  editor.view.dispatch({ selection: { anchor: antesDaQuebra } });
+  editor.view.scrollDOM.scrollTop = 0;
+  await quadro();
+  await quadro();
   const linhas = [...editor.view.contentDOM.querySelectorAll<HTMLElement>(".cm-line")];
   const separadora = linhas.findIndex(
     (linha, indice) =>

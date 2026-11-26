@@ -267,8 +267,14 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   height: 0 !important; padding: 0 !important; font-size: 0 !important; line-height: 0 !important; overflow: hidden;
 }
 
+/* A quebra de cena (ADR 0003): o parágrafo só com `&nbsp;` é a linha em
+   branco do Word. Some o texto, fica a altura da linha; com o cursor nela, o
+   editor tira a classe e o `&nbsp;` aparece. */
+.md-novel-quebra-escondida { visibility: hidden; }
+
 /* O Markdown à vista (ADR 0003): o texto fica como vai sair, e os sinais que
-   o autor digitou continuam na tela, apagados. Nada é escondido. */
+   o autor digitou continuam na tela, apagados. Fora a linha em branco entre
+   parágrafos e a quebra de cena, nada é escondido. */
 .md-novel-enfase { font-style: italic; }
 .md-novel-forte { font-weight: 700; }
 .md-novel-riscado { text-decoration: line-through; }
