@@ -7,7 +7,9 @@
 // O Rust separa por `White_Space` do Unicode e chama de letra o que é
 // `Alphabetic` ou número. O `\s` e o `trim` do JavaScript são outra lista
 // (têm U+FEFF e não têm U+0085), então as classes vão escritas por extenso.
-const ESPACOS = /\p{White_Space}+/u;
+// O `&nbsp;` é espaço para o Pandoc: a quebra de cena (um parágrafo só com
+// ele) não é palavra, e ele separa as que encosta. Só a entidade exata.
+const ESPACOS = /(?:\p{White_Space}|&nbsp;)+/u;
 const LETRA_OU_NUMERO = /[\p{Alphabetic}\p{N}]/u;
 const MARCADOR_DE_BLOCO = /^\p{White_Space}*:::/u;
 const BORDAS = /^\p{White_Space}+|\p{White_Space}+$/gu;
@@ -32,6 +34,7 @@ const aparar = (texto: string) => texto.replace(BORDAS, "");
  * Palavra é todo trecho entre espaços que tenha ao menos uma letra ou um
  * número: `—`, `#` e `* * *` não contam, `d'água` e `texto[^1]` contam uma
  * vez. As linhas que abrem e fecham um bloco `:::` são marcação, não texto.
+ * O `&nbsp;` é espaço, como para o Pandoc: a quebra de cena não é palavra.
  */
 export function contarPalavras(texto: string): number {
   let palavras = 0;

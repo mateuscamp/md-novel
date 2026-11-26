@@ -48,7 +48,7 @@ Quinze passadas:
 14. parágrafos como no Word: a linha em branco entre dois parágrafos não
     ocupa espaço, a quebra de cena (`&nbsp;`) fica em branco com a altura de
     uma linha e aparece só com o cursor nela (não com o capítulo todo
-    selecionado), Enter cria parágrafo (com a linha em branco no arquivo),
+    selecionado) e não conta como palavra, Enter cria parágrafo (com a linha em branco no arquivo),
     Backspace junta, o app oferece converter `\\--` e aspas retas ao abrir o
     capítulo, e o botão da barra de baixo converte, com desfazer.
 15. vários livros: duplo clique renomeia o arquivo do capítulo e F2 abre o
@@ -121,7 +121,7 @@ def contar_palavras(texto: str) -> int:
         1
         for linha in texto.splitlines()
         if not linha.lstrip().startswith(":::")
-        for trecho in linha.split()
+        for trecho in linha.replace("&nbsp;", " ").split()
         if any(caractere.isalnum() for caractere in trecho)
     )
 
@@ -901,6 +901,8 @@ def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
         # Uma fala como outros programas gravam, já no arquivo ao abrir.
         with capitulo.open("ab") as fim:
             fim.write(b'\\-- "Oi", disse.\r\n\r\n')
+        # A quebra de cena não é palavra: a conta daqui trata o `&nbsp;` como espaço.
+        palavras_ao_abrir = contar_palavras(capitulo.read_bytes().decode())
         app = App(binario, pasta, paragrafos=True)
         try:
             if app.esperar_linha("foco:") is None:
@@ -914,6 +916,11 @@ def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
             or 'botão="Converter" antes=true depois=true some=true' not in oferta
         ):
             falhas.append(f"passada 14: o app não ofereceu a conversão ao abrir, ou o botão não converteu: {oferta!r}")
+        contagem = re.search(r'capítulo="Capítulo: ([\d.]+) palavras"', app.linha_com("contagem antes:"))
+        if contagem is None or inteiro(contagem[1]) != palavras_ao_abrir:
+            falhas.append(
+                f"passada 14: com uma quebra de cena no capítulo, a tela devia contar {palavras_ao_abrir} palavras: {app.linha_com('contagem antes:')!r}"
+            )
         quebra = re.search(
             r"longe=hidden altura=(\d+) com-o-cursor=à-vista altura=(\d+) tudo-selecionado=hidden", app.linha_com("quebra de cena:")
         )

@@ -526,10 +526,15 @@ viu o `&nbsp;` escrito na tela e escolheu vê-lo como no Word.
   mudar a quebra. Conta a ponta da seleção, onde o cursor pisca: selecionar
   o capítulo inteiro não acende as quebras do meio. O app pede ao corretor
   que não a sublinhe (não conferido na tela).
-- **Fica para depois:** o `&nbsp;` ainda conta como uma palavra, nos dois
-  lados da contagem. E um `&nbsp;` logo depois de um título ou de uma linha
+- **O `&nbsp;` não conta como palavra** (corrigido em seguida, a pedido do
+  autor: as 28 quebras do livro somavam 28 palavras). Para a contagem ele é
+  espaço, como para o Pandoc: não conta, e separa as palavras que encosta.
+  Só a entidade exata; `&nbsp` sem ponto e vírgula e `&NBSP;` são texto.
+- **Fica para depois:** um `&nbsp;` logo depois de um título ou de uma linha
   `:::` continua escrito, embora o Pandoc o leia sozinho: erra para o lado
-  de mostrar.
+  de mostrar. E dentro de código, ou escapado (`\&nbsp;`), o `&nbsp;` é
+  texto para o Pandoc, mas a contagem, que não interpreta código nem
+  escape, o trata como espaço.
 - **Só o que o Pandoc lê como parágrafo sozinho**: colado num vizinho, com
   mais texto, em código ou com quatro espaços na frente, o `&nbsp;` é texto
   e continua escrito.
