@@ -69,3 +69,15 @@ test("uma escolha de liga e desliga guardada só vale se for exatamente \"sim\""
   assert.equal(lerDesligado("nao"), true);
   for (const outro of [null, "", "sim", "false", "NAO"]) assert.equal(lerDesligado(outro), false, String(outro));
 });
+
+test("Ctrl+Shift+F abre a busca no livro; Ctrl+F sozinho continua sendo a busca do capítulo", () => {
+  assert.equal(atalhoDaTecla("F", true, false, true), "buscar-no-livro");
+  assert.equal(atalhoDaTecla("f", true, false, true), "buscar-no-livro");
+  // Sem Shift é do editor (a busca no capítulo); sem Ctrl é texto.
+  assert.equal(atalhoDaTecla("f", true), null);
+  assert.equal(atalhoDaTecla("F", true, false, false), null);
+  assert.equal(atalhoDaTecla("F", false, false, true), null);
+  assert.equal(atalhoDaTecla("F", true, true, true), null, "no meio de um acento");
+  // O Shift não muda as outras teclas: em alguns teclados o + pede Shift.
+  assert.equal(atalhoDaTecla("+", true, false, true), "zoom-aumentar");
+});

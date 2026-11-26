@@ -18,14 +18,14 @@ comando. ADRs em `docs/adr/`.
   sozinho abre uma janela em branco: em depuração ele espera o `vite` no ar.
 - Teste funcional do app (fora do CI):
   `python3 -I -B app/teste_funcional.py target/debug/md-novel-app [captura.png]`.
-  São quinze passadas: salvar sozinho (com a lateral, a contagem e o realce),
+  São dezesseis passadas: salvar sozinho (com a lateral, a contagem e o realce),
   fechar a janela, exportar, tema escuro, modo foco, a escolha de tema
   guardada, criar o estilo.yaml pelo botão, o conforto (zoom, lateral,
   máquina de escrever), a escrita (aspas, travessão, busca), a sessão
   (reabrir onde parou, meta do dia), o capítulo novo, o corretor
   ortográfico, que precisa do `hunspell-pt-br` instalado, o painel de
-  estilo, os parágrafos como no Word e os vários livros (trocar, renomear,
-  criar). `--passada=N` roda uma só. Ele abre o app num
+  estilo, os parágrafos como no Word, os vários livros (trocar, renomear,
+  criar) e a busca no livro inteiro. `--passada=N` roda uma só. Ele abre o app num
   display virtual invisível (`xvfb-run`), com a pasta de dados do app num
   temporário. Com o png ele grava também `-escuro` e `-foco`: é assim que se
   olha o visual. Rode antes de dizer que uma mudança na interface funciona.
@@ -45,7 +45,7 @@ comando. ADRs em `docs/adr/`.
 | Onde | Papel | Regra |
 |---|---|---|
 | `crates/estilo` | núcleo: estilo.yaml → CSS + styles.xml | Rust puro. Sem processo, sem rede, sem outro crate do projeto. Dependência nova exige mudar o ADR 0002. |
-| `crates/workspace` | a pasta do livro: listar e ler capítulos, contar palavras e achar o título, e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve, renomeia ou cria pasta. Renomear é só por `renomear_sem_sobrescrever` (`saida.rs`). |
+| `crates/workspace` | a pasta do livro: listar e ler capítulos, contar palavras e achar o título, buscar no livro (`busca.rs`, só leitura), e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve, renomeia ou cria pasta. Renomear é só por `renomear_sem_sobrescrever` (`saida.rs`). |
 | `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. Grava pelo `workspace`. |
 | `crates/cli` | adaptador fino | Lê argumentos, chama os crates. Sem regra de estilo. |
 | `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho novo: a pasta vem do seletor do sistema ou da linha de comando, um livro já aberto só pelo caminho que está no `livros.txt` (`memoria::lembrado`), e capítulo só pelo nome da lista. A exceção são os nomes que o autor digita (capítulo novo, livro novo, renomear), sempre conferidos pelo `workspace`. |
@@ -122,6 +122,12 @@ comando. ADRs em `docs/adr/`.
   para o capítulo aberto e desfaz com Ctrl+Z; nunca sozinho ao abrir. Caso novo entra
   primeiro em `tipografia.test.ts`.
 - Texto do CodeMirror que aparece para o autor é traduzido em `busca.ts`.
+- São duas buscas. Ctrl+F é a do capítulo aberto, do CodeMirror, com
+  substituir. Ctrl+Shift+F é a do livro inteiro (`workspace::Livro::buscar`,
+  `achados.ts`): só busca, lê do disco depois de salvar o que está digitado,
+  ignora maiúscula e acento, para em 500 achados e recusa termo de mais de
+  200 letras. Substituir em vários
+  capítulos exige ADR: gravaria em arquivo que não está na tela.
 - O editor mostra o Markdown, não esconde: sinal digitado (`*`, `#`, `:::`)
   continua na tela. As duas exceções: a linha em branco entre dois
   parágrafos (`separador` em `blocos.ts`), que some da tela e continua no

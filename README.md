@@ -122,6 +122,11 @@ O que ele faz hoje:
 - A barra de baixo mostra as palavras escritas hoje no livro. Clique nelas
   para definir a meta do dia; campo vazio tira a meta.
 - Buscar e substituir com Ctrl+F (ou Ctrl+H), dentro do capítulo aberto.
+- Buscar no livro inteiro com Ctrl+Shift+F, ou pela lupa ao lado do nome do
+  livro: a lista de capítulos dá lugar aos achados de todos os capítulos,
+  sem diferenciar maiúscula nem acento ("coracao" acha "Coração"). Clicar
+  num achado abre o capítulo com o trecho selecionado; Esc volta aos
+  capítulos. Só busca: para trocar, o Ctrl+H do capítulo aberto.
 - Parágrafos como no Word: Enter cria um parágrafo novo, e a linha em branco
   que o Markdown pede entre eles fica no arquivo, mas não aparece na tela.
   Backspace no começo de um parágrafo junta com o de cima; Shift+Enter é a

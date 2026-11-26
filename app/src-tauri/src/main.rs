@@ -20,7 +20,8 @@ use workspace::Gravacao;
 use crate::exportacao::ExportacaoFeita;
 use crate::memoria::LivroLembrado;
 use crate::sessao::{
-    CapituloCriado, ErroDeComando, EstiloNoPainel, LivroAberto, LivroRenomeado, Sessao,
+    BuscaNoLivro, CapituloCriado, ErroDeComando, EstiloNoPainel, LivroAberto, LivroRenomeado,
+    Sessao,
 };
 
 #[derive(Default)]
@@ -185,6 +186,19 @@ fn renomear_capitulo(
     estado: State<'_, Estado>,
 ) -> Result<CapituloCriado, ErroDeComando> {
     estado.sessao().renomear_capitulo(&atual, &novo)
+}
+
+/// Procura um termo em todos os capítulos do livro aberto (ADR 0003,
+/// "Buscar no livro"). A página manda só o termo; o Rust lê os capítulos do
+/// disco e nada grava. A sessão só fica travada para dizer qual é o livro:
+/// a leitura roda com ela livre, e quem quer salvar não espera a busca.
+#[tauri::command(async)]
+fn buscar_no_livro(
+    termo: String,
+    estado: State<'_, Estado>,
+) -> Result<BuscaNoLivro, ErroDeComando> {
+    let livro = estado.sessao().livro_para_buscar()?;
+    Sessao::buscar(&livro, &termo)
 }
 
 /// Cria a pasta de um livro novo. O nome vem do autor e é conferido antes de
@@ -462,6 +476,8 @@ struct RoteiroDeTeste {
     paragrafos: bool,
     /// Renomear capítulo e livro, trocar de livro, tirar da lista e criar livro.
     livros: bool,
+    /// Buscar no livro inteiro e abrir um achado de outro capítulo.
+    busca: bool,
 }
 
 /// O roteiro vem de variáveis de ambiente e só existe em build de depuração.
@@ -489,6 +505,7 @@ fn roteiro_de_teste() -> Option<RoteiroDeTeste> {
         painel_de_estilo: std::env::var_os("MD_NOVEL_TESTE_PAINEL_DE_ESTILO").is_some(),
         paragrafos: std::env::var_os("MD_NOVEL_TESTE_PARAGRAFOS").is_some(),
         livros: std::env::var_os("MD_NOVEL_TESTE_LIVROS").is_some(),
+        busca: std::env::var_os("MD_NOVEL_TESTE_BUSCA").is_some(),
     })
 }
 
@@ -560,6 +577,7 @@ fn main() {
             renomear_livro,
             renomear_capitulo,
             criar_livro,
+            buscar_no_livro,
             estado_do_corretor,
             alternar_tela_cheia,
             abrir_capitulo,

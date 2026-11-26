@@ -11,6 +11,7 @@
         <p class="rotulo">Livro</p>
         <div id="cabeca-do-livro">
           <h1 id="nome-do-livro">md Novel</h1>
+          <button id="abrir-busca" type="button" title="Buscar no livro inteiro (Ctrl+Shift+F)" aria-label="Buscar no livro inteiro" aria-pressed="false" hidden><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.25" /><path d="M10.25 10.25L13.5 13.5" /></svg></button>
           <button id="livros" type="button" title="Trocar de livro, criar um livro novo ou renomear este" aria-label="Livros" aria-haspopup="true" aria-expanded="false" aria-controls="menu-de-livros"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4" /></svg></button>
         </div>
         <p id="resumo-do-livro"></p>
@@ -24,8 +25,16 @@
           </div>
         </div>
       </header>
+      <div id="busca-no-livro" hidden>
+        <div id="campo-e-fechar-da-busca">
+          <input id="termo-da-busca" type="text" maxlength="200" placeholder="buscar no livro inteiro" aria-label="Buscar no livro inteiro" title="Procura em todos os capítulos, sem diferenciar maiúscula nem acento. Esc fecha" />
+          <button id="fechar-a-busca" type="button" title="Fechar a busca e voltar aos capítulos (Esc)" aria-label="Fechar a busca no livro">×</button>
+        </div>
+        <p id="resumo-da-busca" role="status"></p>
+      </div>
       <nav aria-label="Capítulos">
         <ol id="capitulos"></ol>
+        <ol id="achados" aria-label="Achados da busca no livro" hidden></ol>
       </nav>
       <footer>
         <input id="nome-do-capitulo-novo" type="text" placeholder="nome, como 03-a-casa" aria-label="Nome do capítulo novo" title="Enter cria o capítulo; Esc desiste" hidden />

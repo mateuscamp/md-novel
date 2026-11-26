@@ -4,17 +4,17 @@ chegou ao disco e o que o navegador aplicou.
 
 Uso: python3 -I teste_funcional.py [--na-tela] [--passada=N] <binário md-novel-app> [png da janela]
 
-`--passada=N` roda só a passada N (de 1 a 15), para conferir uma mudança sem
-esperar as outras; dizer que a interface funciona pede as quinze.
+`--passada=N` roda só a passada N (de 1 a 16), para conferir uma mudança sem
+esperar as outras; dizer que a interface funciona pede as dezesseis.
 
 Por padrão o app abre num display virtual invisível (`xvfb-run`), para não
 pôr janela na tela de quem está trabalhando. `--na-tela` abre na sessão
 gráfica de verdade. O png, se pedido, é tirado depois de exportar; as
-passadas 4, 5, 12 e 15 gravam ao lado dele `<nome>-escuro.png`,
-`<nome>-foco.png`, `<nome>-corretor.png` e `<nome>-livros.png` (o menu dos
-livros aberto).
+passadas 4, 5, 12, 15 e 16 gravam ao lado dele `<nome>-escuro.png`,
+`<nome>-foco.png`, `<nome>-corretor.png`, `<nome>-livros.png` (o menu dos
+livros aberto) e `<nome>-busca.png` (os achados da busca no livro).
 
-Quinze passadas:
+Dezesseis passadas:
 1. salvamento automático: digita e espera o app salvar sozinho; confere
    também a lateral, a contagem de palavras ao vivo, o tema claro e o realce
    do Markdown;
@@ -56,6 +56,10 @@ Quinze passadas:
     pasta do livro (voltando ao mesmo capítulo e cursor), troca para o
     outro livro, tira um da lista sem apagar a pasta e cria um livro novo,
     vazio, onde o seletor (aqui, a variável do teste) mandar.
+16. buscar no livro: Ctrl+Shift+F, até de dentro do modo foco, troca a
+    lista de capítulos pelo campo de busca; o termo sem acento e em maiúsculas acha as ocorrências de todos
+    os capítulos, contadas aqui por outra conta; clicar num achado de outro
+    capítulo o abre com o trecho selecionado; Esc devolve os capítulos.
 
 O app roda com a pasta de dados dele num temporário: o teste não lê nem
 muda a escolha de tema de quem usa o programa nesta máquina. Por isso as
@@ -78,6 +82,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import zipfile
 
 LIMITE_SEGUNDOS = 60
@@ -192,6 +197,7 @@ class App:
         paragrafos: bool = False,
         livros: bool = False,
         onde_criar_livro: pathlib.Path | None = None,
+        busca: bool = False,
     ):
         # A pasta de dados do app (onde o WebKit guarda a escolha de tema e o
         # cache) vai para um temporário: a de quem usa o programa não é tocada.
@@ -233,6 +239,8 @@ class App:
             ambiente["MD_NOVEL_TESTE_PARAGRAFOS"] = "1"
         if livros:
             ambiente["MD_NOVEL_TESTE_LIVROS"] = "1"
+        if busca:
+            ambiente["MD_NOVEL_TESTE_BUSCA"] = "1"
         ambiente.pop("MD_NOVEL_TESTE_ONDE_CRIAR_LIVRO", None)
         if onde_criar_livro is not None:
             ambiente["MD_NOVEL_TESTE_ONDE_CRIAR_LIVRO"] = str(onde_criar_livro)
@@ -995,6 +1003,55 @@ def passada_dos_livros(binario: str, captura: str | None, falhas: list[str]) -> 
             falhas.append(f"passada 15: a lista guardada dos livros: {lembrados}")
 
 
+def ocorrencias(texto: str, termo: str) -> int:
+    """Quantas vezes o termo aparece, sem diferenciar maiúscula nem acento:
+    a regra de `crates/workspace/src/busca.rs`, refeita aqui pelo Unicode do
+    Python para conferir a lista do app sem perguntar a ele."""
+
+    def dobrar(valor: str) -> str:
+        decomposto = unicodedata.normalize("NFD", valor.lower())
+        return "".join(letra for letra in decomposto if unicodedata.category(letra) != "Mn")
+
+    return dobrar(texto).count(dobrar(termo))
+
+
+def passada_da_busca(binario: str, captura: str | None, falhas: list[str]) -> None:
+    print("passada 16: buscar no livro inteiro")
+    with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
+        pasta = pathlib.Path(temporaria)
+        original = montar_livro(pasta)
+        app = App(binario, pasta, busca=True)
+        try:
+            if app.esperar_linha("foco:") is None:
+                falhas.append("passada 16: a interface não chegou ao fim do roteiro")
+                return
+            capturar_se_pedido(app, captura, "-busca")
+        finally:
+            app.encerrar()
+        # A frase que o roteiro digita é salva antes de buscar.
+        no_primeiro = ocorrencias((original + FRASE.encode()).decode(), "CAPITULO")
+        no_segundo = ocorrencias(SEGUNDO_CAPITULO.decode(), "CAPITULO")
+        total = no_primeiro + no_segundo
+        esperados = {
+            "busca aberta:": "campo=true capítulos=escondidos foco=desligado lateral=flex",
+            "busca:": f'resumo="{total} achados em 2 capítulos" por-capítulo=Capítulo um={no_primeiro},Capítulo dois={no_segundo}',
+            "achado na lista:": '"Outro capítulo." marcado="capítulo"',
+            "achado aberto:": 'de=01-abertura.md para=02-a-casa.md seleção="capítulo" atual=true',
+            "busca fechada:": "capítulos=à vista achados=escondidos",
+        }
+        if no_primeiro < 1 or no_segundo < 2:
+            falhas.append(f"passada 16: o livro do teste devia ter o termo nos dois capítulos: {no_primeiro} e {no_segundo}")
+        for prefixo, esperado in esperados.items():
+            if esperado not in app.linha_com(prefixo):
+                falhas.append(f"passada 16: {prefixo} esperava {esperado!r}, veio {app.linha_com(prefixo)!r}")
+        # Buscar só lê: no disco, o que mudou foi a frase digitada.
+        if (pasta / "01-abertura.md").read_bytes() != original + FRASE.encode() or (pasta / "02-a-casa.md").read_bytes() != SEGUNDO_CAPITULO:
+            falhas.append("passada 16: a busca mudou algum capítulo no disco")
+        sobras = sorted(entrada.name for entrada in pasta.iterdir())
+        if sobras != ["01-abertura.md", "02-a-casa.md", "estilo.yaml"]:
+            falhas.append(f"passada 16: arquivos na pasta do livro: {sobras}")
+
+
 def reexecutar_fora_da_tela(argumentos: list[str]) -> int:
     """Roda este mesmo teste dentro de um display virtual. O WebKitGTK usa o
     X11 dele, com desenho por software, e nada aparece na tela."""
@@ -1024,11 +1081,11 @@ def principal() -> int:
     argumentos = [argumento for argumento in sys.argv[1:] if not argumento.startswith("--")]
     so_a_passada = None
     for opcao in opcoes:
-        escolhida = re.fullmatch(r"--passada=([1-9]|1[0-5])", opcao)
+        escolhida = re.fullmatch(r"--passada=([1-9]|1[0-6])", opcao)
         if escolhida is not None:
             so_a_passada = int(escolhida[1])
         elif opcao != "--na-tela":
-            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 15")
+            print(f"opção desconhecida: {opcao!r}; as opções são --na-tela e --passada=N, com N de 1 a 16")
             return 2
     na_tela = "--na-tela" in sys.argv[1:]
     if not argumentos:
@@ -1058,6 +1115,7 @@ def principal() -> int:
         lambda: passada_do_painel_de_estilo(binario, captura, falhas),
         lambda: passada_dos_paragrafos(binario, falhas),
         lambda: passada_dos_livros(binario, captura, falhas),
+        lambda: passada_da_busca(binario, captura, falhas),
     ]
     for numero, passada in enumerate(passadas, start=1):
         if so_a_passada is None or so_a_passada == numero:

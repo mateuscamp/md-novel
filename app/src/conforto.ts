@@ -45,18 +45,29 @@ export function acaoDaRoda(deltaY: number, ctrl: boolean): AcaoDeZoom | null {
   return deltaY < 0 ? "aumentar" : "diminuir";
 }
 
-export type Atalho = "zoom-aumentar" | "zoom-diminuir" | "zoom-restaurar" | "lateral" | "maquina" | "tela-cheia";
+export type Atalho =
+  | "zoom-aumentar"
+  | "zoom-diminuir"
+  | "zoom-restaurar"
+  | "lateral"
+  | "maquina"
+  | "tela-cheia"
+  | "buscar-no-livro";
 
 /** As teclas de função ao lado da do modo foco (F8), e o zoom dos navegadores. */
 export const TECLA_DA_LATERAL = "F9";
 export const TECLA_DA_MAQUINA = "F10";
 export const TECLA_DA_TELA_CHEIA = "F11";
+/** Com Ctrl e Shift, como nos editores de código: a busca em todos os capítulos. */
+const TECLA_DA_BUSCA_NO_LIVRO = "f";
 
 /** O que uma tecla faz com a janela, ou `null` se ela é do texto. No meio da
  *  composição de um acento a tecla é de quem está compondo. */
-export function atalhoDaTecla(tecla: string, ctrl: boolean, compondo = false): Atalho | null {
+export function atalhoDaTecla(tecla: string, ctrl: boolean, compondo = false, shift = false): Atalho | null {
   if (compondo) return null;
   if (ctrl) {
+    // Ctrl+F sozinho é do editor: a busca dentro do capítulo.
+    if (shift && tecla.toLowerCase() === TECLA_DA_BUSCA_NO_LIVRO) return "buscar-no-livro";
     if (tecla === "=" || tecla === "+") return "zoom-aumentar";
     if (tecla === "-") return "zoom-diminuir";
     if (tecla === "0") return "zoom-restaurar";
