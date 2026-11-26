@@ -3,19 +3,28 @@
 //! funções (`app/src/texto.ts`), para contar ao vivo; os casos de
 //! `tests/fixtures` são lidos pelos dois lados e mantêm as regras iguais.
 
+/// O espaço que não quebra, como o Pandoc o lê no Markdown: só a entidade
+/// exata, em minúsculas e com o ponto e vírgula.
+const ESPACO_POR_EXTENSO: &str = "&nbsp;";
+
 /// Conta as palavras de um capítulo.
 ///
 /// Palavra é todo trecho entre espaços que tenha ao menos uma letra ou um
 /// número: `—`, `#` e `* * *` não contam, `d'água` e `texto[^1]` contam uma
 /// vez. As linhas que abrem e fecham um bloco `:::` são marcação, não texto.
+/// O `&nbsp;` é espaço, como para o Pandoc: a quebra de cena não é palavra.
 ///
 /// ```
 /// assert_eq!(workspace::contar_palavras("# Um\n\nA casa — enfim."), 4);
+/// assert_eq!(workspace::contar_palavras("Fim.\n\n&nbsp;\n\nOutra cena."), 3);
 /// ```
 pub fn contar_palavras(texto: &str) -> usize {
     texto
         .lines()
         .filter(|linha| !linha.trim_start().starts_with(":::"))
+        // O espaço escrito por extenso é espaço: a quebra de cena (um
+        // parágrafo só com ele) não é palavra, e ele separa as que encosta.
+        .flat_map(|linha| linha.split(ESPACO_POR_EXTENSO))
         .flat_map(str::split_whitespace)
         .filter(|trecho| trecho.chars().any(char::is_alphanumeric))
         .count()

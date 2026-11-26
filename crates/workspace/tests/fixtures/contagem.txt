@@ -15,3 +15,12 @@
 5|texto[^1]\n\n[^1]: Nota de rodapé.
 6|Um.\nDois.\n\n\nTrês, quatro; cinco: seis!
 2|:::: {.nota}\ndentro conta\n::::
+# `&nbsp;` é um espaço para o Pandoc (a quebra de cena é um parágrafo só com
+# ele): não é palavra, e separa as duas que encosta. Só a entidade exata:
+# sem o ponto e vírgula, ou em maiúsculas, o Pandoc lê texto comum.
+0|&nbsp;
+2|Um.\n\n&nbsp;\n\nDois.
+2|antes&nbsp;depois
+2|&nbsp conta
+1|&NBSP;
+2|R&D conta
