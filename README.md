@@ -62,18 +62,20 @@ livro, ou sem nada e use "Abrir pasta…":
 ./target/release/md-novel-app ~/Dropbox/meu-livro
 ```
 
-No Linux, para ele aparecer no menu de aplicativos como "md Novel", rode da
-pasta do projeto, em vez do comando de compilar acima:
+Para instalar como aplicativo de desktop ("md Novel" no menu do Linux ou no
+Spotlight/Aplicativos do Mac), rode da pasta do projeto, em vez do comando de
+compilar acima:
 
 ```bash
 make instalar
 ```
 
-Isso compila e copia três arquivos para `~/.local`: o programa
-(`bin/md-novel-app`), o ícone e a entrada do menu. Rode de novo depois de
-atualizar o projeto. `make desinstalar` apaga esses três arquivos; a escolha
-de tema, que o programa guarda em `~/.local/share/io.github.mateuscamp.md-novel`,
-fica. No Mac ainda não há instalação: abra pelo terminal.
+No Linux, isso compila e copia três arquivos para `~/.local`: o programa
+(`bin/md-novel-app`), o ícone e a entrada do menu. No Mac, monta o pacote
+`~/Applications/md Novel.app` (passe `PREFIXO=/Applications` se preferir na
+pasta do sistema). Rode de novo depois de atualizar o projeto. `make desinstalar`
+apaga o que foi instalado; o que o programa guarda (livros lembrados, tema,
+zoom) fica.
 
 O que ele faz hoje:
 

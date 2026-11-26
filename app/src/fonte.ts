@@ -35,3 +35,31 @@ export function linhaSimples(fonte: string): number {
   // Fora do razoável (fonte quebrada, medida zerada): fica o padrão do CSS.
   return proporcao >= 0.9 && proporcao <= 2 ? proporcao : 1.2;
 }
+
+/** Uma face devolvida pelo Rust (`carregar_fonte_usuario`, macOS). */
+export interface FaceDeFonte {
+  peso: string;
+  estilo: string;
+  dados_base64: string;
+}
+
+/** Registra uma fonte instalada pelo usuário no macOS via `FontFace` com
+ *  `Uint8Array`, sem tocar no CSP (`default-src 'self'`). */
+export async function registrarFacesNoDocumento(familia: string, faces: FaceDeFonte[]): Promise<boolean> {
+  if (typeof FontFace === "undefined" || !document.fonts || faces.length === 0) return false;
+  let carregou = false;
+  for (const face of faces) {
+    try {
+      const binario = atob(face.dados_base64);
+      const bytes = new Uint8Array(binario.length);
+      for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+      const instancia = new FontFace(familia, bytes, { weight: face.peso, style: face.estilo });
+      await instancia.load();
+      document.fonts.add(instancia);
+      carregou = true;
+    } catch {
+      // Uma face quebrada não impede as outras faces da mesma família.
+    }
+  }
+  return carregou;
+}

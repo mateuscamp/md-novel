@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  acaoDaPinca,
   acaoDaRoda,
   atalhoDaTecla,
   fatorDoZoom,
   lerDesligado,
   lerLigado,
   lerZoom,
+  modificadorDaRoda,
   rotuloDoZoom,
   ZOOM_MAXIMO,
   ZOOM_MINIMO,
@@ -44,6 +46,35 @@ test("a rolagem só mexe no zoom com o Ctrl apertado: para cima aproxima", () =>
   assert.equal(acaoDaRoda(0, true), null);
   // Sem Ctrl a rolagem é do texto.
   assert.equal(acaoDaRoda(-120, false), null);
+});
+
+test("na roda, Ctrl vale sempre (inclusive na pinça); Cmd vale no Mac e Super nunca vale no Linux", () => {
+  // No Linux: só Ctrl sem Alt.
+  assert.equal(modificadorDaRoda(true, false, false, false), true);
+  assert.equal(modificadorDaRoda(false, true, false, false), false);
+  assert.equal(modificadorDaRoda(true, false, true, false), false);
+  // No Mac: Ctrl (pinça do trackpad ou Ctrl+rolagem) e Cmd+rolagem valem, sem Alt.
+  assert.equal(modificadorDaRoda(true, false, false, true), true);
+  assert.equal(modificadorDaRoda(false, true, false, true), true);
+  assert.equal(modificadorDaRoda(false, false, false, true), false);
+  assert.equal(modificadorDaRoda(true, false, true, true), false);
+  assert.equal(modificadorDaRoda(false, true, true, true), false);
+});
+
+test("a pinça no trackpad aproxima e afasta de 10% em 10% a partir da base do gesto", () => {
+  // Movimento menor que um degrau ainda não muda o zoom.
+  assert.equal(acaoDaPinca(1.05, 1), null);
+  assert.equal(acaoDaPinca(0.95, 1), null);
+  // Abrir os dedos 10% ou mais aproxima e move a base.
+  assert.deepEqual(acaoDaPinca(1.12, 1), { acao: "aumentar", novaBase: 1.12 });
+  // Fechar os dedos a partir da nova base afasta quando cai 10%.
+  assert.equal(acaoDaPinca(1.05, 1.12), null);
+  assert.deepEqual(acaoDaPinca(1.0, 1.12), { acao: "diminuir", novaBase: 1.0 });
+  // Escalas inválidas não mexem no zoom.
+  for (const ruim of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(acaoDaPinca(ruim, 1), null, String(ruim));
+    assert.equal(acaoDaPinca(1.2, ruim), null, String(ruim));
+  }
 });
 
 test("as teclas de conforto: zoom com Ctrl, lateral, máquina de escrever e tela cheia", () => {

@@ -32,11 +32,12 @@ comando. ADRs em `docs/adr/`.
 - Nunca abra janela na tela do autor sem ele pedir: nada de `--na-tela`, de
   rodar o binário do app direto nem de `cargo tauri dev` por conta própria
   (2026-11-23: as janelas do teste atrapalharam o trabalho dele).
-- Menu de aplicativos (só Linux): `make instalar` compila sem depuração e
-  copia o programa, o ícone e a entrada do menu para `~/.local`;
-  `make desinstalar` apaga esses três. Quem faz é `app/linux/instalar.sh`,
-  testado em `app/src-tauri/tests/instalar.rs` num prefixo temporário. Não
-  abre janela. Num teste, nunca no prefixo de verdade.
+- Aplicativo instalado (Linux e macOS): `make instalar` compila sem depuração
+  e instala o app (`~/.local` no Linux via `app/linux/instalar.sh`,
+  `~/Applications/md Novel.app` no macOS via `app/macos/instalar.sh`, ou outro
+  `PREFIXO`); `make desinstalar` apaga só o que foi instalado. Testados em
+  `app/src-tauri/tests/instalar.rs` e `app/src-tauri/tests/instalar_macos.rs`
+  numa pasta temporária. Não abre janela. Num teste, nunca no prefixo de verdade.
 - Linha de comando: `cargo run -p md-novel -- estilo estilo.yaml --css editor.css --docx reference.docx`
   e `cargo run -p md-novel -- exportar --estilo estilo.yaml --saida livro.docx cap1.md cap2.md`.
 
@@ -46,10 +47,10 @@ comando. ADRs em `docs/adr/`.
 |---|---|---|
 | `crates/estilo` | núcleo: estilo.yaml → CSS + styles.xml | Rust puro. Sem processo, sem rede, sem outro crate do projeto. Dependência nova exige mudar o ADR 0002. |
 | `crates/workspace` | a pasta do livro: listar e ler capítulos, contar palavras e achar o título, buscar no livro (`busca.rs`, só leitura), e toda gravação em disco | Rust puro, sem tauri e sem processo. Único lugar que escreve, renomeia ou cria pasta. Renomear é só por `renomear_sem_sobrescrever` (`saida.rs`). |
-| `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. Grava pelo `workspace`. |
+| `crates/exportar` | único lugar que chama o Pandoc | Só de .md para .docx (ADR 0001). Sem shell, sem entrada padrão, capítulos depois de `--`. Aviso do Pandoc volta para quem chamou, nunca é descartado. No macOS, quando `pandoc` não está no PATH (app aberto pelo Finder/Spotlight), procura em `~/.local/bin/pandoc`, `/opt/homebrew/bin/pandoc` e `/usr/local/bin/pandoc`. Grava pelo `workspace`. |
 | `crates/cli` | adaptador fino | Lê argumentos, chama os crates. Sem regra de estilo. |
 | `app/src-tauri` | adaptador fino da janela | Cada comando repassa para `Sessao` (`sessao.rs`) ou para `exportacao.rs`, os dois sem tauri e testados sem janela. Operação demorada (o Pandoc) roda com a sessão destravada. A página nunca manda caminho novo: a pasta vem do seletor do sistema ou da linha de comando, um livro já aberto só pelo caminho que está no `livros.txt` (`memoria::lembrado`), e capítulo só pelo nome da lista. A exceção são os nomes que o autor digita (capítulo novo, livro novo, renomear), sempre conferidos pelo `workspace`. |
-| `app/linux` | o instalador do menu de aplicativos (`instalar.sh`, shell POSIX) | Só o `make instalar` e o `make desinstalar` chamam. Escreve três arquivos dentro do `PREFIXO` e mais nenhum, cada um por temporário + rename, os três preparados antes de publicar o primeiro. Nunca toca a pasta do livro. É a única gravação fora do `workspace`. |
+| `app/linux` e `app/macos` | os instaladores do app (`instalar.sh`, shell POSIX) | Só o `make instalar` e o `make desinstalar` chamam. No Linux escreve três arquivos dentro do `PREFIXO` (temporário + rename); no macOS monta `md Novel.app` inteiro num temporário dentro do `PREFIXO` antes de publicar e confere o identificador antes de sobrescrever ou apagar. Nunca tocam a pasta do livro. São a única gravação fora do `workspace`. |
 | `app/src` | a interface (TypeScript, CodeMirror 6) | Recebe o CSS pronto do Rust e não define tipografia do texto. O que o `estilo.yaml` ainda não cobre (títulos, marcadores `:::`) fica em `app.css`, com comentário dizendo isso. Regra testável vai em função pura com teste (`*.test.ts`). O tema e a moldura (`app.css`) não mudam a tipografia do texto. Dependência nova entra na lista de `fronteira.test.ts`, com o motivo no ADR 0003. |
 
 ## Regras
@@ -85,9 +86,9 @@ comando. ADRs em `docs/adr/`.
   `workspace::Livro::renomear_capitulo`, com os mesmos bytes, e só é gravado por
   `workspace::Capitulo::salvar`, que recusa se o arquivo mudou no disco desde
   a leitura e não escreve se o texto é o mesmo. Comando com mais de uma
-  saída prepara todas antes de publicar a primeira. A exceção é o
-  instalador (`app/linux/instalar.sh`): ele não é o app, grava só no
-  `PREFIXO` e segue a mesma disciplina por conta própria.
+  saída prepara todas antes de publicar a primeira. A exceção são os
+  instaladores (`app/linux/instalar.sh` e `app/macos/instalar.sh`): eles não
+  são o app, gravam só no `PREFIXO` e seguem a mesma disciplina por conta própria.
 - Abrir e salvar sem editar devolve os mesmos bytes: o editor trabalha em LF
   sem BOM, e o `workspace` devolve o arquivo no formato em que estava. Arquivo
   que não daria para devolver igual (finais de linha misturados, fora do

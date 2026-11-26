@@ -579,6 +579,61 @@ vezes não sei em qual capítulo está". As escolhas são dele:
   não precisa. Capítulo que não dá para ler como capítulo fica de fora sem
   aviso na lista: o motivo aparece quando o autor o abre.
 
+## Instalar no macOS e achar o Pandoc fora do terminal (2026-11-26)
+
+O autor passou a usar o app de desktop também no MacBook arm64, abrindo pelo
+Spotlight ou pela pasta de aplicativos, sem terminal. Isto substitui o "no Mac
+o app segue aberto pelo terminal" da seção "O nome e o menu de aplicativos" e
+resolve a nota do Pandoc fora do PATH da segunda fatia.
+
+- **`make instalar` e `make desinstalar` no macOS**, em `app/macos/instalar.sh`
+  (simétrico ao `app/linux/instalar.sh`). Por padrão instala em
+  `~/Applications/md Novel.app` (pasta de aplicativos do usuário, equivalente
+  ao `~/.local` no Linux; `PREFIXO=/Applications` instala para a máquina).
+  O `Makefile` escolhe o instalador e o prefixo padrão pelo `uname -s`.
+- **O empacotador do Tauri continua desligado** (`bundle.active: false`). O
+  script monta `md Novel.app` diretamente com o binário compilado
+  (`Contents/MacOS/md-novel-app`), `Contents/Info.plist` (mesmo identificador
+  e versão do `tauri.conf.json`) e `Contents/Resources/icon.icns` gerado de
+  `app/src-tauri/icons/icon-source.png` pelas ferramentas do próprio macOS
+  (`sips` e `iconutil`), com assinatura ad-hoc (`codesign --sign -`). Nenhuma
+  dependência nova entra no projeto.
+- **Publicação atômica e guarda contra destruição.** O pacote inteiro é
+  montado num temporário dentro da pasta de destino antes de publicar. Ao
+  atualizar um `md Novel.app` já existente, o antigo é movido para um backup
+  temporário na mesma pasta, o novo assume o lugar (com restauração se a troca
+  falhar) e só então o antigo é apagado. Symlinks e arquivos que não sejam o
+  pacote do md Novel são recusados, e `desinstalar` confere o identificador no
+  `Info.plist` antes de remover o pacote, sem tocar nos vizinhos nem nos dados
+  do app (`~/Library/Application Support/io.github.mateuscamp.md-novel`).
+- **Achar o Pandoc fora do terminal no macOS** (`crates/exportar`). O `PATH`
+  continua tendo prioridade máxima (mantendo o terminal, o CI e os testes
+  iguais). Só quando `pandoc` não está no `PATH` (`NotFound`) no macOS é que
+  `crates/exportar` procura nos três locais padrão da máquina, nesta ordem:
+  `~/.local/bin/pandoc` (instalação do usuário, apenas com `HOME` absoluto),
+  `/opt/homebrew/bin/pandoc` (Homebrew arm64) e `/usr/local/bin/pandoc`
+  (instalador oficial `.pkg` do Pandoc e Homebrew Intel).
+- **Custo aceito:** o pacote é assinado ad-hoc para uso local na máquina que
+  o compilou, sem notarização da Apple para distribuição a terceiros. A
+  decisão inverte quando o projeto passar a distribuir `.dmg` pronto.
+- **Fontes instaladas pelo usuário no macOS** (`app/src-tauri/src/fontes.rs`).
+  O sandbox do `WKWebView` bloqueia fontes de `~/Library/Fonts` e
+  `/Library/Fonts` (anti-fingerprinting do WebKit), impedindo o editor de
+  renderizar fontes como EB Garamond mesmo instaladas no Mac. Quando uma fonte
+  do livro não aparece no WebView, a página pede ao Rust só o nome da família
+  (`carregar_fonte_usuario`, sem caminho); o Rust lê arquivos `.ttf`/`.otf`
+  regulares dentro de `~/Library/Fonts` e `/Library/Fonts` (até 32 MiB por
+  arquivo, sem dependência nova nem `unsafe`), extrai família, peso (`fvar`/
+  `OS/2`) e estilo (`OS/2`/`head`) do cabeçalho OpenType e devolve os bytes em
+  base64 para a página registrar via `new FontFace(familia, bytes, …)`. O CSP
+  continua estrito (`default-src 'self'`), porque `FontFace` com `Uint8Array`
+  não usa URL nem `data:`. Fora do macOS o comando devolve lista vazia.
+- **Pinça no trackpad do macOS** (`app/src/conforto.ts`). O `WKWebView` com
+  `allowsMagnification = false` entrega o gesto de pinça via `gesturestart`/
+  `gesturechange`/`gestureend`, e outros WebViews via `wheel` com `ctrlKey`.
+  Ambos ajustam apenas `--md-novel-zoom` (de 10% em 10%), com `preventDefault`
+  para não escalar a janela inteira e sem duplicar quando os dois disparam.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -616,6 +671,9 @@ vezes não sei em qual capítulo está". As escolhas são dele:
 | Dependências da interface | `app/src/fronteira.test.ts` | `make check` | o `package.json` do app ganha ou perde uma dependência sem a lista do teste mudar junto |
 | O nome que as pessoas leem | `app/src/nome.test.ts` | `make check` | a janela, a página ou a primeira linha do README deixam de dizer "md Novel", ou o identificador ganha espaço ou maiúscula |
 | Instalar no menu | `app/src-tauri/tests/instalar.rs`, que roda o `app/linux/instalar.sh` num prefixo temporário | `make check` | instalar cria algo além dos três arquivos, a entrada do menu sai diferente, um prefixo que não cabe na linha `Exec` é aceito, roda fora do Linux, ou desinstalar apaga um vizinho |
+| Instalar no macOS | `app/src-tauri/tests/instalar_macos.rs`, que roda o `app/macos/instalar.sh` numa pasta temporária (com stubs no Linux e ferramentas reais no macOS) | `make check` | o `.app` sai sem `Info.plist` (identificador/versão do `tauri.conf.json`), binário executável ou `icon.icns`, aceita prefixo relativo/`/`/com controle ou symlink, falha parcial deixa temporário ou corrompe a instalação anterior, roda fora do Darwin, ou desinstalar apaga um vizinho ou pacote de outro app |
+| Pandoc fora do PATH no macOS | testes de `crates/exportar/src/lib.rs` e `crates/cli/tests/linha_de_comando.rs` | `make check` | o `PATH` perde precedência, `HOME` relativo é aceito como candidato, o fallback roda quando o Pandoc do `PATH` falhou por outro motivo que `NotFound`, ou no macOS o `pandoc` em `~/.local/bin`, `/opt/homebrew/bin` ou `/usr/local/bin` não é achado sem `PATH` de terminal |
+| Fontes do usuário no macOS | testes de `app/src-tauri/src/fontes.rs` | `make check` | o parser OpenType falha em fonte estática ou variável (`fvar` `wght`), aceita arquivo acima do teto, segue symlink de diretório, aceita `HOME` relativo ou devolve fonte de outra família |
 | O estilo criado pelo app nunca sobrescreve | `crates/workspace/tests/livro.rs` (`criar_estilo_*`) | `make check` | criar o estilo com um `estilo.yaml` já na pasta (arquivo ou link) muda algum byte, ou deixa outro arquivo na pasta |
 | O botão grava o exemplo do projeto e devolve o livro com CSS | testes `criar_estilo_*` de `app/src-tauri/src/sessao.rs` | `make check` | o arquivo gravado difere de `exemplos/estilo.yaml`, o livro volta sem CSS ou o aviso continua |
 | Criar o estilo na janela de verdade | `app/teste_funcional.py`, passada 7 | à mão, fora do CI | o aviso sem o botão, a linha do corpo sem o alinhamento do modelo depois do clique, a frase digitada perdida ou arquivo a mais na pasta |

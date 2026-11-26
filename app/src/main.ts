@@ -7,6 +7,7 @@ import { type Achado, achadoAindaVale, resumoDosAchados, termoDaSelecao } from "
 import { nomeParaEditar, sugestaoDeNome, teclaDeRenomear } from "./capitulo.ts";
 import {
   type AcaoDeZoom,
+  acaoDaPinca,
   acaoDaRoda,
   type Atalho,
   atalhoDaTecla,
@@ -16,12 +17,13 @@ import {
   lerDesligado,
   lerLigado,
   lerZoom,
+  modificadorDaRoda,
   rotuloDoZoom,
   zoomDepoisDe,
 } from "./conforto.ts";
 import { criarEditor } from "./editor.ts";
 import { teclaDoFoco } from "./foco.ts";
-import { fonteInstalada, linhaSimples } from "./fonte.ts";
+import { type FaceDeFonte, fonteInstalada, linhaSimples, registrarFacesNoDocumento } from "./fonte.ts";
 import { type Estado, Gravador } from "./gravador.ts";
 import {
   type Alinhamento,
@@ -445,19 +447,24 @@ async function exportar(): Promise<void> {
 
 /** Os avisos de fonte que falta, trocados a cada vez que o estilo muda. */
 let avisosDeFonte: HTMLElement[] = [];
+/** Promessas de carregamento por família (evita pedir duas vezes ao Rust e
+ *  garante que uma troca rápida de estilo ainda aguarde o carregamento em curso). */
+const fontesEmCarga = new Map<string, Promise<boolean>>();
+let versaoDoEstilo = 0;
 
-function aplicarEstilo(livro: LivroAberto): void {
-  cssDoLivro.replaceSync(livro.css ?? "");
+function atualizarEstadoDasFontes(fontes: string[]): string[] {
   avisosDeFonte.forEach((aviso) => aviso.remove());
   avisosDeFonte = [];
-  const [corpo] = livro.fontes;
+  const [corpo] = fontes;
   if (corpo === undefined) {
     document.documentElement.style.removeProperty("--md-novel-linha-simples");
-    return;
+    return [];
   }
   document.documentElement.style.setProperty("--md-novel-linha-simples", String(linhaSimples(corpo)));
-  for (const fonte of livro.fontes) {
+  const faltando: string[] = [];
+  for (const fonte of fontes) {
     if (!fonteInstalada(fonte)) {
+      faltando.push(fonte);
       avisosDeFonte.push(
         avisar(
           `A fonte "${fonte}" do estilo do livro não está instalada neste computador: a tela está usando outra, e o Word vai escolher a dele. Instale a fonte, ou escolha outra no painel "Estilo".`,
@@ -465,6 +472,35 @@ function aplicarEstilo(livro: LivroAberto): void {
       );
     }
   }
+  return faltando;
+}
+
+function carregarUmaFonteDoUsuario(fonte: string): Promise<boolean> {
+  const chave = fonte.toLowerCase();
+  const existente = fontesEmCarga.get(chave);
+  if (existente !== undefined) return existente;
+  const promessa = invoke<FaceDeFonte[]>("carregar_fonte_usuario", { familia: fonte })
+    .then((faces) => registrarFacesNoDocumento(fonte, faces))
+    .catch(() => false);
+  fontesEmCarga.set(chave, promessa);
+  return promessa;
+}
+
+async function carregarFontesDoUsuario(fontes: string[]): Promise<boolean> {
+  const resultados = await Promise.all(fontes.map(carregarUmaFonteDoUsuario));
+  return resultados.some(Boolean);
+}
+
+function aplicarEstilo(livro: LivroAberto): void {
+  const versao = ++versaoDoEstilo;
+  cssDoLivro.replaceSync(livro.css ?? "");
+  const faltando = atualizarEstadoDasFontes(livro.fontes);
+  if (faltando.length === 0) return;
+  void carregarFontesDoUsuario(faltando).then((carregou) => {
+    if (!carregou || versao !== versaoDoEstilo) return;
+    atualizarEstadoDasFontes(livro.fontes);
+    editor.view.requestMeasure();
+  });
 }
 
 // ---- A sessão de escrita: onde parou, e as palavras de hoje ----
@@ -2078,8 +2114,47 @@ botaoDasAspas.addEventListener("click", () => {
  *  tecla Super é do gerenciador de janelas (no Hyprland, Super+rolagem troca
  *  de área de trabalho), e com Alt a tecla é um caractere do teclado. */
 const NO_MAC = /mac/i.test(navigator.platform);
-const comModificador = (evento: KeyboardEvent | WheelEvent): boolean =>
+const comModificador = (evento: KeyboardEvent): boolean =>
   (NO_MAC ? evento.metaKey : evento.ctrlKey) && !evento.altKey;
+
+/** Evento de pinça do trackpad no WebKit do macOS (`gesturestart`/`change`/`end`),
+ *  que não faz parte das definições padrão do DOM no TypeScript. */
+interface EventoDeGesto extends Event {
+  readonly scale: number;
+}
+
+/** Escala do último passo dado numa pinça em curso, ou `null` fora dela. */
+let baseDaPinca: number | null = null;
+
+window.addEventListener(
+  "gesturestart",
+  (evento) => {
+    const gesto = evento as EventoDeGesto;
+    gesto.preventDefault();
+    baseDaPinca = Number.isFinite(gesto.scale) && gesto.scale > 0 ? gesto.scale : 1;
+  },
+  { passive: false, capture: true },
+);
+window.addEventListener(
+  "gesturechange",
+  (evento) => {
+    const gesto = evento as EventoDeGesto;
+    gesto.preventDefault();
+    const passo = acaoDaPinca(gesto.scale, baseDaPinca ?? 1);
+    if (passo === null) return;
+    baseDaPinca = passo.novaBase;
+    mudarZoom(passo.acao);
+  },
+  { passive: false, capture: true },
+);
+window.addEventListener(
+  "gestureend",
+  (evento) => {
+    evento.preventDefault();
+    baseDaPinca = null;
+  },
+  { passive: false, capture: true },
+);
 
 /** A rolagem do touchpad manda dezenas de eventos por gesto: um passo de
  *  zoom a cada intervalo, não um por evento. */
@@ -2088,10 +2163,15 @@ let ultimaRoda = 0;
 window.addEventListener(
   "wheel",
   (evento) => {
-    const acao = acaoDaRoda(evento.deltaY, comModificador(evento));
+    const acao = acaoDaRoda(
+      evento.deltaY,
+      modificadorDaRoda(evento.ctrlKey, evento.metaKey, evento.altKey, NO_MAC),
+    );
     if (acao === null) return;
-    // Com Ctrl a rolagem é do zoom: o texto não rola junto.
+    // Com Ctrl/Cmd (ou pinça do trackpad) a rolagem é do zoom: o texto não rola junto.
     evento.preventDefault();
+    // Se o WebKit já está tratando a mesma pinça via `gesturechange`, não duplica o zoom.
+    if (baseDaPinca !== null) return;
     if (evento.timeStamp - ultimaRoda < INTERVALO_DA_RODA_MS) return;
     ultimaRoda = evento.timeStamp;
     mudarZoom(acao);
@@ -2130,7 +2210,10 @@ elemento("abrir-pasta-do-vazio").addEventListener("click", () => void escolherPa
 botaoSalvar.addEventListener("click", () => void gravador.salvarAgora());
 botaoExportar.addEventListener("click", () => void exportar());
 // Sair da janela salva: o autor troca de programa sem pensar nisso.
-window.addEventListener("blur", () => void gravador.salvarAgora());
+window.addEventListener("blur", () => {
+  baseDaPinca = null;
+  void gravador.salvarAgora();
+});
 
 // Fechar a janela: o Rust segura o fechamento e avisa aqui. Salva-se o que
 // falta e só então a janela fecha. Se não deu para salvar, ela fica aberta

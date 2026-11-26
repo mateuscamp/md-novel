@@ -45,6 +45,35 @@ export function acaoDaRoda(deltaY: number, ctrl: boolean): AcaoDeZoom | null {
   return deltaY < 0 ? "aumentar" : "diminuir";
 }
 
+/** Quanto a escala da pinça no trackpad precisa mudar para dar um passo de
+ *  zoom (10%, o mesmo passo do teclado e da roda). */
+const PASSO_DA_PINCA = 1.1;
+
+/** Na roda do mouse e na pinça do trackpad: Ctrl sempre vale (trackpads e
+ *  navegadores enviam a pinça como wheel com Ctrl), e no Mac Cmd+rolagem
+ *  também aproxima. No Linux, Super continua do gerenciador de janelas. */
+export function modificadorDaRoda(
+  ctrlKey: boolean,
+  metaKey: boolean,
+  altKey: boolean,
+  noMac: boolean,
+): boolean {
+  return !altKey && (ctrlKey || (noMac && metaKey));
+}
+
+/** Um passo de zoom a partir da escala atual de uma pinça no trackpad
+ *  (`gesturechange` do WebKit no Mac) e da escala base do último passo. */
+export function acaoDaPinca(
+  escala: number,
+  base: number,
+): { acao: "aumentar" | "diminuir"; novaBase: number } | null {
+  if (!Number.isFinite(escala) || !Number.isFinite(base) || escala <= 0 || base <= 0) return null;
+  const razao = escala / base;
+  if (razao >= PASSO_DA_PINCA) return { acao: "aumentar", novaBase: escala };
+  if (razao <= 1 / PASSO_DA_PINCA) return { acao: "diminuir", novaBase: escala };
+  return null;
+}
+
 export type Atalho =
   | "zoom-aumentar"
   | "zoom-diminuir"

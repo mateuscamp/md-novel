@@ -140,19 +140,70 @@ struct SaidaDoPandoc {
     avisos: Vec<String>,
 }
 
+/// Caminhos padrão onde o Pandoc costuma ficar no macOS quando o app é aberto
+/// pelo Finder/Spotlight sem o PATH do terminal (ADR 0003).
+#[cfg(any(target_os = "macos", test))]
+fn candidatos_pandoc_macos(home: Option<&Path>) -> Vec<PathBuf> {
+    let mut caminhos = Vec::with_capacity(3);
+    if let Some(pasta) = home.filter(|pasta| pasta.is_absolute()) {
+        caminhos.push(pasta.join(".local/bin/pandoc"));
+    }
+    caminhos.push(PathBuf::from("/opt/homebrew/bin/pandoc"));
+    caminhos.push(PathBuf::from("/usr/local/bin/pandoc"));
+    caminhos
+}
+
 /// Roda o Pandoc sem shell e sem entrada padrão.
 fn rodar_pandoc(argumentos: &[OsString]) -> Result<SaidaDoPandoc, ErroExportar> {
-    let resultado = Command::new("pandoc")
+    #[cfg(target_os = "macos")]
+    let fallbacks = {
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        candidatos_pandoc_macos(home.as_deref())
+    };
+    #[cfg(not(target_os = "macos"))]
+    let fallbacks: Vec<PathBuf> = Vec::new();
+    rodar_pandoc_com(Path::new("pandoc"), &fallbacks, argumentos)
+}
+
+fn executar_pandoc(
+    programa: &Path,
+    argumentos: &[OsString],
+) -> Result<std::process::Output, std::io::Error> {
+    Command::new(programa)
         .args(argumentos)
         .stdin(Stdio::null())
         .output()
-        .map_err(|erro| {
-            if erro.kind() == ErrorKind::NotFound {
-                ErroExportar::PandocAusente
-            } else {
-                ErroExportar::Io(erro)
+}
+
+fn rodar_pandoc_com(
+    programa_inicial: &Path,
+    fallbacks: &[PathBuf],
+    argumentos: &[OsString],
+) -> Result<SaidaDoPandoc, ErroExportar> {
+    let resultado = match executar_pandoc(programa_inicial, argumentos) {
+        Ok(saida) => saida,
+        Err(erro) if erro.kind() == ErrorKind::NotFound => {
+            let mut encontrado = None;
+            for candidato in fallbacks {
+                if !candidato.is_file() {
+                    continue;
+                }
+                match executar_pandoc(candidato, argumentos) {
+                    Ok(saida) => {
+                        encontrado = Some(saida);
+                        break;
+                    }
+                    Err(falha) if falha.kind() == ErrorKind::NotFound => continue,
+                    // Erro diferente de NotFound (ex.: arquivo sem permissão de
+                    // execução) é devolvido em vez de pular silenciosamente para
+                    // outro Pandoc diferente do que o autor instalou ali.
+                    Err(falha) => return Err(ErroExportar::Io(falha)),
+                }
             }
-        })?;
+            encontrado.ok_or(ErroExportar::PandocAusente)?
+        }
+        Err(erro) => return Err(ErroExportar::Io(erro)),
+    };
     let erro_padrao = String::from_utf8_lossy(&resultado.stderr);
     if !resultado.status.success() {
         return Err(ErroExportar::PandocFalhou {
@@ -257,5 +308,104 @@ mod tests {
         let erro =
             exportar_docx(&[], b"", Path::new("/tmp/nao-usado.docx")).expect_err("sem capítulos");
         assert!(matches!(erro, ErroExportar::SemCapitulos), "veio {erro}");
+    }
+
+    #[test]
+    fn candidatos_pandoc_no_mac_mantem_a_ordem_e_ignoram_home_relativo() {
+        assert_eq!(
+            candidatos_pandoc_macos(Some(Path::new("/Users/autora"))),
+            vec![
+                PathBuf::from("/Users/autora/.local/bin/pandoc"),
+                PathBuf::from("/opt/homebrew/bin/pandoc"),
+                PathBuf::from("/usr/local/bin/pandoc"),
+            ]
+        );
+        assert_eq!(
+            candidatos_pandoc_macos(Some(Path::new("relativo"))),
+            vec![
+                PathBuf::from("/opt/homebrew/bin/pandoc"),
+                PathBuf::from("/usr/local/bin/pandoc"),
+            ]
+        );
+        assert_eq!(
+            candidatos_pandoc_macos(None),
+            vec![
+                PathBuf::from("/opt/homebrew/bin/pandoc"),
+                PathBuf::from("/usr/local/bin/pandoc"),
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rodar_pandoc_usa_fallback_so_quando_o_primeiro_nao_existe() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let pasta = tempfile::tempdir().expect("pasta temporária");
+        let diretorio_no_caminho = pasta.path().join("pasta-chamada-pandoc");
+        fs::create_dir(&diretorio_no_caminho).expect("criar pasta");
+
+        let fallback_bom = pasta.path().join("pandoc-fallback");
+        fs::write(&fallback_bom, "#!/bin/sh\nprintf 'achado-no-fallback'\n")
+            .expect("escrever fallback");
+        fs::set_permissions(&fallback_bom, fs::Permissions::from_mode(0o755))
+            .expect("tornar executável");
+
+        // Primeiro não existe -> pula diretório e usa o fallback executável.
+        let saida = rodar_pandoc_com(
+            &pasta.path().join("nao-existe"),
+            &[
+                pasta.path().join("tambem-nao-existe"),
+                diretorio_no_caminho,
+                fallback_bom.clone(),
+            ],
+            &[],
+        )
+        .expect("achar o fallback");
+        assert_eq!(saida.saida_padrao, b"achado-no-fallback");
+
+        // Quando o primeiro existe mas falha, NÃO cai para o fallback.
+        let primeiro_que_falha = pasta.path().join("pandoc-com-erro");
+        fs::write(
+            &primeiro_que_falha,
+            "#!/bin/sh\necho 'erro do primeiro' >&2\nexit 2\n",
+        )
+        .expect("escrever primeiro");
+        fs::set_permissions(&primeiro_que_falha, fs::Permissions::from_mode(0o755))
+            .expect("tornar executável");
+
+        let erro = rodar_pandoc_com(&primeiro_que_falha, &[fallback_bom], &[])
+            .err()
+            .expect("erro do primeiro programa");
+        assert!(
+            matches!(erro, ErroExportar::PandocFalhou { ref codigo, ref stderr } if codigo == "2" && stderr == "erro do primeiro"),
+            "veio {erro:?}"
+        );
+
+        // Sem nenhum candidato existente, devolve PandocAusente.
+        let ausente = rodar_pandoc_com(
+            &pasta.path().join("nao-existe"),
+            &[pasta.path().join("tampouco")],
+            &[],
+        )
+        .err()
+        .expect("nenhum candidato existe");
+        assert!(
+            matches!(ausente, ErroExportar::PandocAusente),
+            "veio {ausente:?}"
+        );
+
+        // Fallback existente mas sem permissão de execução devolve Io em vez de silenciar.
+        let sem_permissao = pasta.path().join("pandoc-sem-exec");
+        fs::write(&sem_permissao, "#!/bin/sh\nexit 0\n").expect("escrever sem permissão");
+        fs::set_permissions(&sem_permissao, fs::Permissions::from_mode(0o644))
+            .expect("tirar permissão de execução");
+        let negado = rodar_pandoc_com(&pasta.path().join("nao-existe"), &[sem_permissao], &[])
+            .err()
+            .expect("permissão negada no fallback");
+        assert!(
+            matches!(negado, ErroExportar::Io(ref io) if io.kind() == ErrorKind::PermissionDenied),
+            "veio {negado:?}"
+        );
     }
 }

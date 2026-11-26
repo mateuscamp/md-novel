@@ -386,3 +386,33 @@ fn na_primeira_exportacao_o_erro_nao_cita_arquivo_anterior() {
     assert!(stderr.contains("nada foi alterado no destino"), "{stderr}");
     assert_eq!(nomes_na_pasta(pasta.path()), ["cap1.md", "estilo.yaml"]);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn no_mac_exporta_mesmo_com_o_path_reduzido_do_finder() {
+    let (pasta, _) = pasta_com_romance();
+    fs::write(pasta.path().join("cap1.md"), "# Um\n\nTexto.\n").expect("cap1");
+
+    // PATH que o Finder/Spotlight entrega a um .app no macOS: sem ~/.local/bin,
+    // /opt/homebrew/bin nem /usr/local/bin.
+    let saida = Command::new(env!("CARGO_BIN_EXE_md-novel"))
+        .args([
+            "exportar",
+            "--estilo",
+            "estilo.yaml",
+            "--saida",
+            "livro.docx",
+            "cap1.md",
+        ])
+        .current_dir(pasta.path())
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("rodar o binário md-novel");
+
+    assert!(
+        saida.status.success(),
+        "devia achar o pandoc fora do PATH: {}",
+        String::from_utf8_lossy(&saida.stderr)
+    );
+    assert!(pasta.path().join("livro.docx").is_file());
+}

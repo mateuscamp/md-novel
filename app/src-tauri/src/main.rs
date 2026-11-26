@@ -5,6 +5,7 @@
 #[cfg(target_os = "linux")]
 mod corretor;
 mod exportacao;
+mod fontes;
 mod memoria;
 mod sessao;
 
@@ -18,6 +19,7 @@ use tauri_plugin_dialog::DialogExt;
 use workspace::Gravacao;
 
 use crate::exportacao::ExportacaoFeita;
+use crate::fontes::FaceDeFonte;
 use crate::memoria::LivroLembrado;
 use crate::sessao::{
     BuscaNoLivro, CapituloCriado, ErroDeComando, EstiloNoPainel, LivroAberto, LivroRenomeado,
@@ -247,6 +249,22 @@ fn onde_criar_de_teste() -> Option<PathBuf> {
         std::env::var_os("MD_NOVEL_TESTE_ONDE_CRIAR_LIVRO").map(PathBuf::from)
     } else {
         None
+    }
+}
+
+/// Carrega as faces de uma fonte instalada pelo usuário no macOS (ADR 0003).
+/// A página manda só o nome da família, nunca um caminho; o Rust lê apenas das
+/// pastas padrão de fontes. Fora do macOS o WebView já vê as fontes do usuário.
+#[tauri::command(async)]
+fn carregar_fonte_usuario(familia: String) -> Vec<FaceDeFonte> {
+    #[cfg(target_os = "macos")]
+    {
+        fontes::carregar_do_mac(&familia)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = familia;
+        Vec::new()
     }
 }
 
@@ -578,6 +596,7 @@ fn main() {
             renomear_capitulo,
             criar_livro,
             buscar_no_livro,
+            carregar_fonte_usuario,
             estado_do_corretor,
             alternar_tela_cheia,
             abrir_capitulo,

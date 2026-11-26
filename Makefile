@@ -13,17 +13,25 @@ interface:
 	cd app && npm test
 	cd app && npx vite build
 
-# Põe o md Novel no menu de aplicativos (só no Linux): compila o programa de
-# verdade, sem depuração, e copia o programa, o ícone e a entrada do menu
-# para o prefixo. Rode de novo depois de atualizar o projeto. Não abre janela.
-# A conferência vem primeiro para não compilar minutos e recusar no fim.
+# Põe o md Novel nos aplicativos do sistema (Linux e macOS): compila o programa
+# de verdade, sem depuração, e instala no prefixo padrão (~/.local no Linux,
+# ~/Applications no macOS). Rode de novo depois de atualizar o projeto. Não abre
+# janela. A conferência vem primeiro para não compilar minutos e recusar no fim.
+SISTEMA := $(shell uname -s)
+ifeq ($(SISTEMA),Darwin)
+PREFIXO ?= $(HOME)/Applications
+INSTALADOR := app/macos/instalar.sh
+else
 PREFIXO ?= $(HOME)/.local
+INSTALADOR := app/linux/instalar.sh
+endif
+
 instalar:
-	sh app/linux/instalar.sh conferir "$(PREFIXO)"
+	sh $(INSTALADOR) conferir "$(PREFIXO)"
 	cd app && npm ci --ignore-scripts --no-audit --no-fund
 	cd app && cargo tauri build --no-bundle
-	sh app/linux/instalar.sh instalar "$(PREFIXO)" target/release/md-novel-app
+	sh $(INSTALADOR) instalar "$(PREFIXO)" target/release/md-novel-app
 
-# Apaga os três arquivos que o `instalar` criou, e só eles.
+# Apaga apenas o que o `instalar` criou, sem tocar nos dados guardados pelo app.
 desinstalar:
-	sh app/linux/instalar.sh desinstalar "$(PREFIXO)"
+	sh $(INSTALADOR) desinstalar "$(PREFIXO)"
