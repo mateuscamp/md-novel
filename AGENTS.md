@@ -123,9 +123,11 @@ comando. ADRs em `docs/adr/`.
   primeiro em `tipografia.test.ts`.
 - Texto do CodeMirror que aparece para o autor é traduzido em `busca.ts`.
 - O editor mostra o Markdown, não esconde: sinal digitado (`*`, `#`, `:::`)
-  continua na tela. A única exceção é a linha em branco entre dois
+  continua na tela. As duas exceções: a linha em branco entre dois
   parágrafos (`separador` em `blocos.ts`), que some da tela e continua no
-  arquivo; Enter grava essa linha por conta própria (`paragrafo.ts`). O modo foco nunca esconde os avisos.
+  arquivo, e Enter grava por conta própria (`paragrafo.ts`); e o parágrafo
+  só com `&nbsp;` (`quebraDeCena`), a quebra de cena, que fica em branco
+  menos com o cursor nele. Exceção nova passa pelo ADR 0003. O modo foco nunca esconde os avisos.
 - Caminho de imagem num capítulo vale a partir da pasta daquele capítulo
   (`+rebase_relative_paths`), não da pasta de onde o comando roda.
 - O único arquivo que o md Novel apaga sozinho é temporário dele mesmo:

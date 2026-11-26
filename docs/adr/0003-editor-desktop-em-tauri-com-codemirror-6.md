@@ -512,6 +512,31 @@ renomear o livro e os capítulos. As escolhas são dele:
   resolve o caminho ao abrir): renomeá-lo renomeia a pasta real, e o link
   fica apontando para o nome velho.
 
+## A quebra de cena na tela (2026-11-25)
+
+Ao separar "O dom da pele" em capítulos, as linhas em branco do docx entre
+uma cena e outra viraram um parágrafo só com `&nbsp;`, a única forma de o
+Markdown guardar uma linha em branco que o Pandoc leva para o Word. O autor
+viu o `&nbsp;` escrito na tela e escolheu vê-lo como no Word.
+
+- **O parágrafo que é só `&nbsp;` aparece em branco**, com a altura de uma
+  linha. O arquivo não muda. É a segunda exceção a "o editor mostra o
+  Markdown", depois da linha em branco entre parágrafos.
+- **Com o cursor na linha, o `&nbsp;` aparece**, para o autor apagar ou
+  mudar a quebra. Conta a ponta da seleção, onde o cursor pisca: selecionar
+  o capítulo inteiro não acende as quebras do meio. O app pede ao corretor
+  que não a sublinhe (não conferido na tela).
+- **Fica para depois:** o `&nbsp;` ainda conta como uma palavra, nos dois
+  lados da contagem. E um `&nbsp;` logo depois de um título ou de uma linha
+  `:::` continua escrito, embora o Pandoc o leia sozinho: erra para o lado
+  de mostrar.
+- **Só o que o Pandoc lê como parágrafo sozinho**: colado num vizinho, com
+  mais texto, em código ou com quatro espaços na frente, o `&nbsp;` é texto
+  e continua escrito.
+- **Recusado:** um botão para alternar entre a marcação escondida e o
+  Markdown cru. Ele esconderia também `#`, `*` e `:::`, que o autor quer ver,
+  e cada coisa escondida é mais um caso para o cursor e para os testes.
+
 ## Governança
 
 | O que verifica | Mecanismo | Onde roda | Falha quando |
@@ -539,6 +564,7 @@ renomear o livro e os capítulos. As escolhas são dele:
 | Regras do formulário | `app/src/painel.test.ts` | `make check` | o estilo nomeado não herda do texto do livro, uma propriedade do estilo fica sem campo no painel, ou uma medida não vai e volta |
 | O painel na janela de verdade | `app/teste_funcional.py`, passada 13 | à mão, fora do CI | a mudança no painel não aparece no texto na hora, não chega ao `estilo.yaml`, o estilo nomeado não herda, criar ou apagar estilo falha, ou o valor inválido é gravado |
 | Linha separadora e Enter de parágrafo | `app/src/blocos.test.ts` e `app/src/paragrafo.test.ts` | `make check` | uma linha em branco de bloco de código, do fim do capítulo ou repetida é escondida, ou o Enter abre linha em branco em lista, citação, tabela ou linha `:::` |
+| A quebra de cena | `app/src/blocos.test.ts` (`quebraDeCena`) e `app/teste_funcional.py`, passada 14 | `make check`; a passada, à mão | um `&nbsp;` colado, com texto, em código ou indentado é escondido, ou o sozinho aparece escrito com o cursor longe, some sem ocupar a linha, ou não aparece com o cursor nele |
 | Converter sinais | `app/src/tipografia.test.ts` (`converter`, `ofertaDeConversao`) | `make check` | um sinal é trocado em código, linha `:::`, tabela, quebra de cena, cabeçalho YAML, comentário ou link, ou as trocas não refazem o texto |
 | Parágrafos na janela de verdade | `app/teste_funcional.py`, passada 14 | à mão, fora do CI | a linha em branco entre parágrafos ocupa espaço, Enter não grava a linha em branco, Backspace não junta os parágrafos, converter e desfazer não dão o texto esperado, ou o capítulo com `\\--` abre sem a oferta de converter |
 | O cursor tem a altura da letra | `app/teste_funcional.py`, passada 1 (`conferir_cursor`) | à mão, fora do CI | o cursor passa de 1,4 vez o tamanho da letra, ou tem a altura da linha inteira |

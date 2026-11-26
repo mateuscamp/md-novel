@@ -46,7 +46,9 @@ Quinze passadas:
     na hora e o estilo.yaml; o estilo nomeado herda; cria-se e apaga-se um
     estilo; um valor que o Word não guarda fica só no aviso do painel.
 14. parágrafos como no Word: a linha em branco entre dois parágrafos não
-    ocupa espaço, Enter cria parágrafo (com a linha em branco no arquivo),
+    ocupa espaço, a quebra de cena (`&nbsp;`) fica em branco com a altura de
+    uma linha e aparece só com o cursor nela (não com o capítulo todo
+    selecionado), Enter cria parágrafo (com a linha em branco no arquivo),
     Backspace junta, o app oferece converter `\\--` e aspas retas ao abrir o
     capítulo, e o botão da barra de baixo converte, com desfazer.
 15. vários livros: duplo clique renomeia o arquivo do capítulo e F2 abre o
@@ -892,9 +894,13 @@ def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
     with tempfile.TemporaryDirectory(prefix="md-novel-teste-") as temporaria:
         pasta = pathlib.Path(temporaria)
         montar_livro(pasta)
+        # Uma quebra de cena logo no começo, onde a tela mostra, como o docx
+        # convertido do autor guarda: um parágrafo só com `&nbsp;`.
+        capitulo = pasta / "01-abertura.md"
+        capitulo.write_bytes(capitulo.read_bytes().replace(PARAGRAFO.encode(), PARAGRAFO.encode() + b"&nbsp;\r\n\r\n", 1))
         # Uma fala como outros programas gravam, já no arquivo ao abrir.
-        with (pasta / "01-abertura.md").open("ab") as capitulo:
-            capitulo.write(b'\\-- "Oi", disse.\r\n\r\n')
+        with capitulo.open("ab") as fim:
+            fim.write(b'\\-- "Oi", disse.\r\n\r\n')
         app = App(binario, pasta, paragrafos=True)
         try:
             if app.esperar_linha("foco:") is None:
@@ -908,6 +914,12 @@ def passada_dos_paragrafos(binario: str, falhas: list[str]) -> None:
             or 'botão="Converter" antes=true depois=true some=true' not in oferta
         ):
             falhas.append(f"passada 14: o app não ofereceu a conversão ao abrir, ou o botão não converteu: {oferta!r}")
+        quebra = re.search(
+            r"longe=hidden altura=(\d+) com-o-cursor=à-vista altura=(\d+) tudo-selecionado=hidden", app.linha_com("quebra de cena:")
+        )
+        # Em branco, mas ocupando a linha, como no Word; com o cursor, o texto aparece.
+        if quebra is None or int(quebra[1]) < 15 or int(quebra[2]) < 15:
+            falhas.append(f"passada 14: a quebra de cena (&nbsp;) não ficou em branco com a altura de uma linha, ou não apareceu com o cursor: {app.linha_com('quebra de cena:')!r}")
         medida = re.search(r"separadoras=(\d+) altura=(\S+) vão=(-?\d+)px", app.linha_com("parágrafos: separadoras"))
         # A linha em branco some, e um parágrafo encosta no outro.
         if medida is None or int(medida[1]) < 3 or medida[2] != "0" or abs(int(medida[3])) > 1:

@@ -165,3 +165,26 @@ test("dentro de um bloco de código nenhuma linha é separadora, e a linha é ma
     [false, false, true, true, true, true, true, false, false],
   );
 });
+
+const quebras = (texto: string) => marcarLinhas(texto.split("\n")).map((marca) => marca.quebraDeCena);
+
+test("um parágrafo só com &nbsp; é a linha em branco de uma quebra de cena", () => {
+  assert.deepEqual(quebras("Fim da cena.\n\n&nbsp;\n\nOutra cena."), [false, false, true, false, false]);
+  // Espaço em volta, começo e fim do capítulo: ainda é um parágrafo sozinho.
+  assert.deepEqual(quebras("  &nbsp;  \n\nTexto."), [true, false, false]);
+  assert.deepEqual(quebras("Texto.\n\n&nbsp;"), [false, false, true]);
+  // Duas seguidas, cada uma no seu parágrafo.
+  assert.deepEqual(quebras("&nbsp;\n\n&nbsp;"), [true, false, true]);
+});
+
+test("&nbsp; colado num parágrafo, com mais texto, em código ou escrito de outro jeito não é quebra", () => {
+  // Sem linha em branco, o Pandoc junta a linha ao parágrafo vizinho.
+  assert.deepEqual(quebras("Texto.\n&nbsp;"), [false, false]);
+  assert.deepEqual(quebras("&nbsp;\nTexto."), [false, false]);
+  assert.deepEqual(quebras("&nbsp; e mais"), [false]);
+  assert.deepEqual(quebras("&NBSP;"), [false]);
+  assert.deepEqual(quebras("```\n&nbsp;\n```"), [false, false, false]);
+  // Em código, nem com linha em branco em volta: o Pandoc mostra o texto.
+  assert.deepEqual(quebras("```\n\n&nbsp;\n\n```"), [false, false, false, false, false]);
+  assert.deepEqual(quebras("    &nbsp;"), [false], "quatro espaços é bloco de código para o Pandoc");
+});
